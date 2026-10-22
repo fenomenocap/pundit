@@ -47,6 +47,23 @@ if [[ -n "${3:-}" && "${3}" != "$EXPECTED_REGISTRY_MODE" ]]; then
 fi
 POLL_ATTEMPTS="${VERIFY_PROD_POLL_ATTEMPTS:-48}"
 POLL_INTERVAL_SECONDS="${VERIFY_PROD_POLL_INTERVAL_SECONDS:-5}"
+# Step 2 (API serving the floor SHA) waits by wall clock, not attempt count.
+# The API now deploys to DO via deploy-do.yml only after CI on main is green
+# (6-9 min), while this check starts at push, so the old ~4 min window
+# (48 x 5s) reported a healthy deploy as stale. PUNDIT_VERIFY_WAIT_SECONDS sets
+# the window (default 900). If only VERIFY_PROD_POLL_ATTEMPTS is set, the old
+# attempts x interval window is kept for local runs.
+if [[ -n "${PUNDIT_VERIFY_WAIT_SECONDS:-}" ]]; then
+  API_WAIT_SECONDS="$PUNDIT_VERIFY_WAIT_SECONDS"
+elif [[ -n "${VERIFY_PROD_POLL_ATTEMPTS:-}" ]]; then
+  API_WAIT_SECONDS=$((POLL_ATTEMPTS * POLL_INTERVAL_SECONDS))
+else
+  API_WAIT_SECONDS=900
+fi
+if ! [[ "$API_WAIT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$API_WAIT_SECONDS" -lt 1 ]]; then
+  echo "FAIL: PUNDIT_VERIFY_WAIT_SECONDS must be a positive integer (got '$API_WAIT_SECONDS')"
+  exit 1
+fi
 
 json_sha() {
   python3 -c 'import json,sys; print((json.load(sys.stdin).get("sha") or ""))'
@@ -100,10 +117,11 @@ startup_poll_reason() {
   python3 -c 'import json,sys; print(json.load(sys.stdin)["reason"])' <<<"$poll_json"
 }
 
-echo "=== 2. Poll API startup/version ==="
+echo "=== 2. Poll API startup/version (up to ${API_WAIT_SECONDS}s) ==="
 API_SHA=""
 STARTUP_DEFERRED=""
-for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
+API_DEADLINE=$((SECONDS + API_WAIT_SECONDS))
+for ((attempt = 1; ; attempt++)); do
   STARTUP_HTTP=$(curl -sS -o /dev/null -w "%{http_code}" "$API_URL/startup" || true)
   HEALTH_HTTP=$(curl -sS -o /dev/null -w "%{http_code}" "$API_URL/health" || true)
   API_VERSION=$(curl -fsS "$API_URL/version" 2>/dev/null || true)
@@ -118,8 +136,8 @@ for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
     fi
     break
   fi
-  if [[ "$attempt" -eq "$POLL_ATTEMPTS" ]]; then
-    echo "FAIL: API did not serve ready startup and a SHA at or after $EXPECTED_API_SHA"
+  if [[ "$SECONDS" -ge "$API_DEADLINE" ]]; then
+    echo "FAIL: API did not serve ready startup and a SHA at or after $EXPECTED_API_SHA within ${API_WAIT_SECONDS}s ($attempt attempts)"
     echo "      /startup HTTP $STARTUP_HTTP, /health HTTP $HEALTH_HTTP, served SHA ${API_SHA:-missing} ($(sha_state "$API_SHA" "$EXPECTED_API_SHA"))"
     exit 1
   fi
