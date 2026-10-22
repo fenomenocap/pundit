@@ -98,7 +98,7 @@ describe("calibrated EPL delivery", () => {
     expect(grounding.goalCalibration).toEqual(fixture.goalCalibration);
     const answer = composeMatchResponse("Over and under 2.5 odds: why do the probabilities sum to one?", grounding);
     expect(answer).toContain((fixture.pOver2_5 * 100).toFixed(1) + "%");
-    expect(answer).toContain("historical scoring patterns and team ratings");
+    expect(answer).toContain("historical scoring and team strength");
     expect(answer).toContain("probabilities sum to one");
     expect(answer).not.toContain("fixed total-goals assumption");
   });
