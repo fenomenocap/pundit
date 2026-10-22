@@ -327,7 +327,7 @@ function MatchRow({
         ) : (
           <span className="text-2xs text-quiet">{match.competition}</span>
         )}
-        <span className="text-2xs uppercase tracking-wider text-subtle">
+        <span data-testid="fixture-status" className="text-2xs uppercase tracking-wider text-subtle">
           {live ? "In play" : finished ? "Full time" : "Scheduled"}
         </span>
       </div>
@@ -554,6 +554,8 @@ export default function FixturesPage() {
   const chronological = sortFixturesChronologically(matches);
   const recognizedById = recognizedFixtureMap(recognized);
   const modelById = new Map(modelFixtures.map((fixture) => [modelFixtureIdentity(fixture), fixture]));
+  const anyPriced = matches.some((match) =>
+    modelById.has(modelFixtureIdentity({ competitionId: match.competitionId, fixtureId: match.id })));
   const days: Array<{ day: string; matches: MatchResponse[] }> = [];
   for (const match of chronological) {
     const day = dayHeading(match.utcDate);
@@ -620,7 +622,13 @@ export default function FixturesPage() {
             ) : matches.length === 0 ? (
               <EmptyState message="No fixture data available for this competition right now." />
             ) : (
-              days.map((group) => (
+              <>
+              {!anyPriced && (
+                <p data-testid="fixtures-unpriced-note" className="border-b border-border px-4 py-2 text-xs text-quiet">
+                  No priced fixtures are available for this competition right now. The schedule is still shown below.
+                </p>
+              )}
+              {days.map((group) => (
                 <div key={group.day}>
                   <h3 className="border-b border-border bg-elevated px-4 py-1.5 text-2xs font-semibold uppercase tracking-wider text-quiet">
                     {group.day}
@@ -640,7 +648,8 @@ export default function FixturesPage() {
                     />
                   ))}
                 </div>
-              ))
+              ))}
+              </>
             )}
           </DeskSection>
         </div>

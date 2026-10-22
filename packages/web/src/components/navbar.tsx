@@ -8,14 +8,20 @@ import { loadSlate } from "@/desk/lib/slate";
 import { useDesk } from "@/desk/lib/store";
 import { getDocsUrl } from "@/lib/site-links";
 import { cn } from "@/lib/utils";
+import { FPL_BUILDER_ENABLED } from "@/lib/features";
 
-const PRIMARY = [
+type NavItem = { href: string; label: string; short?: string };
+
+const ALL_PRIMARY: NavItem[] = [
   { href: "/", label: "Desk" },
   { href: "/fixtures", label: "Fixtures" },
   { href: "/board", label: "Bet slip", short: "Slip" },
   { href: "/draft", label: "FPL" },
   { href: "/evaluation/club-season", label: "Track record", short: "Record" },
-] as const;
+];
+
+// The FPL link is hidden until the builder is switched on (src/lib/features.ts).
+const PRIMARY = ALL_PRIMARY.filter((item) => FPL_BUILDER_ENABLED || item.href !== "/draft");
 
 export function Navbar() {
   const pathname = usePathname();
@@ -113,7 +119,7 @@ export function MobileDock() {
           </li>
         </ul>
       ) : null}
-      <ul className="grid grid-cols-6">
+      <ul className={cn("grid", PRIMARY.length === 5 ? "grid-cols-6" : "grid-cols-5")}>
         {PRIMARY.map((n) => {
           const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
           return (
@@ -127,7 +133,7 @@ export function MobileDock() {
                   active ? "text-accent" : "text-quiet",
                 )}
               >
-                {"short" in n ? n.short : n.label}
+                {n.short ?? n.label}
               </Link>
             </li>
           );
