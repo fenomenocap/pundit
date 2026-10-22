@@ -1,0 +1,20 @@
+# Canonical copy: deploy/do/caddy/Caddyfile. On the droplet: /opt/pundit-deploy/caddy/Caddyfile.
+# Automatic HTTPS (Let's Encrypt, ZeroSSL fallback). No domain yet, so this uses
+# sslip.io: 134-209-121-101.sslip.io resolves to 134.209.121.101 and gets a real cert.
+#
+# To switch to a custom domain later (e.g. api.example.com):
+#   1. DNS: A record api.example.com -> 134.209.121.101
+#   2. Replace the hostname below (or list both, comma-separated, during the switch)
+#   3. docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+#   4. Update Vercel NEXT_PUBLIC_API_URL once and redeploy main once.
+{
+	# Optional: an address for certificate-expiry notices.
+	# email you@example.com
+}
+
+134-209-121-101.sslip.io {
+	encode zstd gzip
+	# The upstream (the live API colour) is swapped by deploy/do/swap.sh:
+	#   reverse_proxy pundit-api-blue:3001   (or pundit-api-green / pundit-api-1)
+	import /etc/caddy/upstream.caddy
+}
