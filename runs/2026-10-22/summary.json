@@ -1,0 +1,113 @@
+{
+  "date": "2026-10-22",
+  "runId": "2026-10-22T13-57-07-027Z",
+  "status": "attention",
+  "overall": "ISSUES FOUND",
+  "progress": "complete",
+  "liveBettingMaths": {
+    "pass": 16,
+    "inconclusive": 0,
+    "fail": 4,
+    "total": 20
+  },
+  "liveBettingMathsHeadline": "Live betting-maths (excl. offline helpers): pass 16, inconclusive 0, fail 4 (20 scenarios)",
+  "byCategory": {
+    "betting-maths": {
+      "pass": 24,
+      "inconclusive": 0,
+      "fail": 4
+    },
+    "context": {
+      "pass": 23,
+      "inconclusive": 0,
+      "fail": 3
+    },
+    "infra": {
+      "pass": 18,
+      "inconclusive": 5,
+      "fail": 0
+    }
+  },
+  "scenariosRun": 77,
+  "passed": 65,
+  "inconclusive": 5,
+  "failed": 7,
+  "turns": 75,
+  "answeredTurns": 75,
+  "turnsWithCitations": 2,
+  "medianLatencyMs": 144,
+  "repeatedSentences": 0,
+  "nearDuplicatePairs": 0,
+  "uncitedCurrentNews": 0,
+  "requestEngine": "both",
+  "qualityMetrics": {
+    "templateShare": 0.10666666666666667,
+    "nearDuplicateRate": 0.03207207207207207,
+    "llmCallRate": 0.09333333333333334,
+    "abstainRate": 0.14666666666666667,
+    "citationCoverage": 0.02666666666666667
+  },
+  "llmJudgeSummary": {
+    "score": null,
+    "averages": {
+      "personaStrength": null,
+      "clearCall": null,
+      "specificity": null,
+      "variety": null,
+      "citationCorrectness": null,
+      "overall": null
+    },
+    "judgedTurns": 0,
+    "scoredTurns": 0,
+    "skippedTurns": 24
+  },
+  "engineQualityComparison": {
+    "legacy": {
+      "templateShare": 0.10666666666666667,
+      "nearDuplicateRate": 0.03207207207207207,
+      "llmCallRate": 0.09333333333333334,
+      "abstainRate": 0.14666666666666667,
+      "citationCoverage": 0.02666666666666667
+    },
+    "agent": {
+      "templateShare": 0.11940298507462686,
+      "nearDuplicateRate": 0.0370872908186341,
+      "llmCallRate": 0.9850746268656716,
+      "abstainRate": 0.05970149253731343,
+      "citationCoverage": 0.014925373134328358
+    }
+  },
+  "findings": [
+    {
+      "scenario": "pinned-current-manager-and-result-evidence",
+      "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
+    },
+    {
+      "scenario": "pinned-current-manager-everton-fixed",
+      "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
+    },
+    {
+      "scenario": "dated-club-news-delivers-supported-update",
+      "summary": "FAIL: turn 1: verification failed verificationStatus; turn 1: verification failed positiveNewsVerification; turn 1: positive dated club news failed positiveNewsVerification; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated"
+    },
+    {
+      "scenario": "analyst-conversation-golden-path",
+      "summary": "FAIL: turn 1: response correctness failed comparableMarketAttribution"
+    },
+    {
+      "scenario": "featured-totals-honesty",
+      "summary": "FAIL: turn 1: analyst expression failed totalsAssumptionMatchesDistribution"
+    },
+    {
+      "scenario": "featured-o25-scoreline-follow-up",
+      "summary": "FAIL: turn 2: analyst expression failed totalsAssumptionMatchesDistribution"
+    },
+    {
+      "scenario": "featured-explicit-preview-stays-long-read",
+      "summary": "FAIL: turn 1: response correctness failed comparableMarketAttribution"
+    }
+  ],
+  "sourceCommit": "1c4a554",
+  "apiSha": "a842177",
+  "ranAt": "2026-10-22T13:57:07.027Z"
+}
