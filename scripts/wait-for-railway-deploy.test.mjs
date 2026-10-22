@@ -10,6 +10,7 @@ import {
   fetchRailwayPublicStatusReport,
   findSupersedingSuccessfulDeploy,
   formatRailwayPublicStatusReport,
+  isRailwayHost,
   latestIncidentStatusFromRssDescription,
   latestStatusForContext,
   listMainDescendantsAfter,
@@ -17,6 +18,7 @@ import {
   parseOpenIncidentsFromRss,
   railwayDeployRequired,
   railwayTimeoutHeadline,
+  resolveApiHost,
   waitForRailwayDeploy,
 } from "./wait-for-railway-deploy.mjs";
 
@@ -307,4 +309,59 @@ test("waitForRailwayDeploy times out when status never succeeds", async () => {
   assert.equal(result.ok, false);
   assert.equal(result.reason, "railway-status-timeout");
   assert.equal(result.status?.state, "pending");
+});
+
+test("isRailwayHost matches railway.app and its subdomains only", () => {
+  assert.equal(isRailwayHost("thepundit.up.railway.app"), true);
+  assert.equal(isRailwayHost("THEPUNDIT.UP.RAILWAY.APP"), true);
+  assert.equal(isRailwayHost("railway.app"), true);
+  assert.equal(isRailwayHost("134-209-121-101.sslip.io"), false);
+  assert.equal(isRailwayHost("notrailway.app"), false);
+  assert.equal(isRailwayHost("railway.app.evil.example"), false);
+  assert.equal(isRailwayHost(""), false);
+});
+
+test("resolveApiHost prefers --api-url, then PUNDIT_API_URL, then the DO default", () => {
+  assert.equal(
+    resolveApiHost({ apiUrl: "https://thepundit.up.railway.app/", env: {} }),
+    "thepundit.up.railway.app",
+  );
+  assert.equal(
+    resolveApiHost({ env: { PUNDIT_API_URL: "https://thepundit.up.railway.app" } }),
+    "thepundit.up.railway.app",
+  );
+  assert.equal(resolveApiHost({ env: {} }), "134-209-121-101.sslip.io");
+  assert.equal(resolveApiHost({ env: { PUNDIT_API_URL: "" } }), "134-209-121-101.sslip.io");
+});
+
+const SCRIPT = new URL("./wait-for-railway-deploy.mjs", import.meta.url).pathname;
+
+function runCli(args, env) {
+  try {
+    const stdout = execFileSync(process.execPath, [SCRIPT, ...args], {
+      env: { PATH: process.env.PATH, ...env },
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return { code: 0, stdout, stderr: "" };
+  } catch (error) {
+    return { code: error.status, stdout: String(error.stdout ?? ""), stderr: String(error.stderr ?? "") };
+  }
+}
+
+test("CLI is a no-op when the API host is not Railway", () => {
+  const result = runCli(["--sha", "abc123"], {});
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /^skipped: API host is not Railway/);
+});
+
+test("CLI keeps the Railway wait for railway.app hosts", () => {
+  // No GitHub token: the Railway path runs and fails on its existing guard,
+  // proving the skip did not fire.
+  const result = runCli(["--sha", "abc123"], {
+    PUNDIT_API_URL: "https://thepundit.up.railway.app",
+  });
+  assert.equal(result.code, 1);
+  assert.doesNotMatch(result.stdout, /skipped/);
+  assert.match(result.stderr, /GITHUB_TOKEN or GH_TOKEN is required/);
 });
