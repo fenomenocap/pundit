@@ -22,13 +22,15 @@ export interface MarketProbabilityRow {
 }
 
 /**
- * The one percent rule for every surface, identical to the API's
- * deskPercentDisplay: round the probability once (half up), then format.
- * 0.163463 -> "16.3%" on the card, summary, /fixtures and in chat.
+ * The one percent rule for every surface. The API publishes probabilities at
+ * 4dp (0.1635) and chat rounds that published value (deskPercentDisplay), so
+ * the web rounds the same published value: 4dp first, then the display digits.
+ * A raw grid cell 0.163463 therefore reads 16.4% here, exactly as in chat.
  */
 export function roundedPercent(n: number, digits = 1): string {
+  const published = Math.round(n * 10_000) / 10_000;
   const scale = 10 ** (digits + 2);
-  return `${((Math.round(n * scale) / scale) * 100).toFixed(digits)}%`;
+  return `${((Math.round(published * scale) / scale) * 100).toFixed(digits)}%`;
 }
 
 export function formatPercent(value: number | null): string {

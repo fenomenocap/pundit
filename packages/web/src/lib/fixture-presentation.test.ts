@@ -371,10 +371,11 @@ describe("calibrated goal distribution delivery", () => {
   });
 });
 
-it("roundedPercent rounds once like the API (0.163463 -> 16.3%)", async () => {
+it("roundedPercent rounds the API's published 4dp value, like chat (grid 0.163463 -> 0.1635 -> 16.4%)", async () => {
   const { roundedPercent, formatPercent } = await import("./fixture-presentation.ts");
-  assert.equal(roundedPercent(0.16346303969363984, 1), "16.3%");
-  assert.equal(formatPercent(0.16346303969363984), "16.3%");
-  assert.equal(roundedPercent(0.16351, 1), "16.4%");
+  assert.equal(roundedPercent(0.16346303969363984, 1), "16.4%");
+  assert.equal(formatPercent(0.16346303969363984), "16.4%");
+  assert.equal(roundedPercent(0.1635, 1), "16.4%");
+  assert.equal(roundedPercent(0.1091, 1), "10.9%");
   assert.equal(roundedPercent(0.7744, 0), "77%");
 });
