@@ -1220,10 +1220,10 @@ export function HomeChat() {
             </Link>
             <span className="mx-1.5 text-muted-foreground/60">·</span>
             <Link
-              href="/model"
+              href="/evaluation/club-season"
               className="underline-offset-4 transition-colors hover:text-foreground hover:underline"
             >
-              Model Reference
+              Track record
             </Link>
             {getDocsUrl() && (
               <>

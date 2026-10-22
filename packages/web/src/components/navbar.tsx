@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LeagueMark } from "@/desk/components/kit";
-import { fmtMoney } from "@/desk/lib/format";
 import { loadSlate } from "@/desk/lib/slate";
 import { useDesk } from "@/desk/lib/store";
 import { getDocsUrl } from "@/lib/site-links";
@@ -12,22 +11,15 @@ import { cn } from "@/lib/utils";
 
 const PRIMARY = [
   { href: "/", label: "Desk" },
-  { href: "/board", label: "Paper" },
-  { href: "/draft", label: "Draft" },
-  { href: "/vault", label: "Vaults" },
-] as const;
-
-const SECONDARY = [
   { href: "/fixtures", label: "Fixtures" },
-  { href: "/model", label: "Model" },
-  { href: "/evaluation/club-season", label: "Ledger" },
+  { href: "/board", label: "Bet slip", short: "Slip" },
+  { href: "/draft", label: "FPL" },
+  { href: "/evaluation/club-season", label: "Track record", short: "Record" },
 ] as const;
 
 export function Navbar() {
   const pathname = usePathname();
-  const cash = useDesk((s) => s.cash);
   const hydrate = useDesk((s) => s.hydrateSlate);
-  const lab = pathname !== "/" && PRIMARY.some((n) => n.href !== "/" && pathname.startsWith(n.href));
 
   useEffect(() => {
     let cancelled = false;
@@ -72,23 +64,6 @@ export function Navbar() {
               </Link>
             );
           })}
-          <span className="mx-2 h-4 w-px bg-border" aria-hidden />
-          {SECONDARY.map((n) => {
-            const active = pathname.startsWith(n.href);
-            return (
-              <Link
-                key={n.href}
-                href={n.href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "px-2.5 h-8 inline-flex items-center rounded-sm text-xs font-semibold uppercase tracking-wider transition-colors duration-150",
-                  active ? "text-fg" : "text-subtle hover:text-quiet",
-                )}
-              >
-                {n.label}
-              </Link>
-            );
-          })}
         </nav>
 
         <div className="ml-auto flex items-center gap-3 sm:gap-4">
@@ -96,10 +71,7 @@ export function Navbar() {
             href={getDocsUrl()}
             target="_blank"
             rel="noopener noreferrer"
-            className={cn(
-              "shrink-0 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-subtle transition-colors duration-150 hover:text-fg",
-              lab && "hidden sm:inline-flex",
-            )}
+            className="hidden sm:inline-flex shrink-0 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-subtle transition-colors duration-150 hover:text-fg"
           >
             How it works
           </a>
@@ -112,12 +84,6 @@ export function Navbar() {
             <span className="text-border-strong">/</span>
             <span>Club season</span>
           </div>
-          {lab ? (
-            <div className="flex items-baseline gap-2 tabular-nums">
-              <span className="eyebrow">Paper</span>
-              <span className="font-display text-lg leading-none text-fg">{fmtMoney(cash)}</span>
-            </div>
-          ) : null}
         </div>
       </div>
     </header>
@@ -134,19 +100,7 @@ export function MobileDock() {
       className="xl:hidden sticky bottom-0 z-40 border-t border-border bg-surface/95 backdrop-blur pb-[env(safe-area-inset-bottom)]"
     >
       {moreOpen ? (
-        <ul id="mobile-more-navigation" className="grid grid-cols-2 sm:grid-cols-4 border-b border-border">
-          {SECONDARY.map((n) => (
-            <li key={n.href}>
-              <Link
-                href={n.href}
-                onClick={() => setMoreOpen(false)}
-                aria-current={pathname.startsWith(n.href) ? "page" : undefined}
-                className="flex h-12 items-center justify-center text-xs font-semibold uppercase tracking-wider text-fg"
-              >
-                {n.label}
-              </Link>
-            </li>
-          ))}
+        <ul id="mobile-more-navigation" className="grid grid-cols-1 border-b border-border">
           <li>
             <a
               href={getDocsUrl()}
@@ -159,7 +113,7 @@ export function MobileDock() {
           </li>
         </ul>
       ) : null}
-      <ul className="grid grid-cols-5">
+      <ul className="grid grid-cols-6">
         {PRIMARY.map((n) => {
           const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
           return (
@@ -173,7 +127,7 @@ export function MobileDock() {
                   active ? "text-accent" : "text-quiet",
                 )}
               >
-                {n.label}
+                {"short" in n ? n.short : n.label}
               </Link>
             </li>
           );
@@ -186,7 +140,7 @@ export function MobileDock() {
             onClick={() => setMoreOpen((open) => !open)}
             className={cn(
               "flex h-12 w-full items-center justify-center text-2xs font-semibold uppercase tracking-wider",
-              moreOpen || SECONDARY.some((n) => pathname.startsWith(n.href)) ? "text-accent" : "text-quiet",
+              moreOpen ? "text-accent" : "text-quiet",
             )}
           >
             More

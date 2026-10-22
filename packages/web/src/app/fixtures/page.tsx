@@ -12,8 +12,11 @@ import {
   fetchUpcomingMatches,
 } from "@/lib/mock-data";
 import { getTeamMonogram, getTeamColor } from "@/lib/team-logos";
+import { SourcesToggle } from "@/components/sources-toggle";
+import { DeskPage, DeskPageHeader, DeskSection } from "@/components/desk-page";
 import { ApiError, buildAskUrl, modelFixtureIdentity } from "@/lib/api";
 import type {
+  ClubFormResponse,
   CompetitionResponse,
   FixtureCapability,
   MatchResponse,
@@ -22,16 +25,13 @@ import type {
   StandingResponse,
 } from "@/lib/api";
 import { Disclaimer } from "@/components/disclaimer";
-import { PageHeader } from "@/components/page-header";
 import { ErrorBanner } from "@/components/error-banner";
 import { EmptyState } from "@/components/empty-state";
-import { FilterPill } from "@/components/filter-pill";
 import {
   capabilityLabel,
   capabilityTone,
   formatObservedAt,
   formatKickoffTime,
-  formatKickoffDay,
   KICKOFF_TIME_NOTE,
   formatPercent,
   marketRowsFromModel,
@@ -140,13 +140,19 @@ function Monogram({ name }: { name: string }) {
   const accent = getTeamColor(name);
   return (
     <span
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[11px] font-bold text-white shadow-card"
+      className="flex size-6 shrink-0 items-center justify-center rounded-xs text-[10px] font-bold text-white"
       style={{ backgroundColor: accent }}
       aria-hidden
     >
       {monogram ?? "·"}
     </span>
   );
+}
+
+function dayHeading(utcDate: string): string {
+  return new Date(utcDate).toLocaleDateString("en-GB", {
+    weekday: "long", day: "numeric", month: "long", timeZone: "Europe/London",
+  });
 }
 
 function MatchRow({
@@ -161,7 +167,6 @@ function MatchRow({
   const finished = match.status === "FINISHED";
   const live = match.status === "IN_PLAY";
   const showScore = finished || live;
-  const accent = getTeamColor(match.homeTeam);
   const askHref = isAskable(match)
     ? buildAskUrl(
       `${match.homeTeam} vs ${match.awayTeam}`,
@@ -178,122 +183,124 @@ function MatchRow({
       data-p-home={modelFixture?.pHome}
       data-p-draw={modelFixture?.pDraw}
       data-p-away={modelFixture?.pAway}
-      className="relative overflow-hidden rounded-xl border border-card-rim bg-card shadow-card"
+      className="relative border-b border-border px-4 py-3 last:border-b-0"
     >
-      <div
-        aria-hidden
-        className="absolute inset-x-0 top-0 h-0.5"
-        style={{ backgroundColor: accent }}
-      />
-      <div className="flex flex-col gap-2 px-3 pb-2.5 pt-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <Monogram name={match.homeTeam} />
-            <Monogram name={match.awayTeam} />
-            <div className="ml-1 flex min-w-0 flex-col text-xs leading-tight">
-              <span className="truncate font-medium text-foreground" title={match.homeTeam}>
-                {match.homeTeam}
-              </span>
-              <span className="truncate font-medium text-foreground" title={match.awayTeam}>
-                {match.awayTeam}
-              </span>
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-col items-end text-right">
-            <span className="font-mono text-base font-bold tabular-nums text-foreground">
-              {formatKickoffTime(match.utcDate)}
-            </span>
-            <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-              {formatKickoffDay(match.utcDate)}
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 rounded-md bg-secondary/40 px-2 py-1.5">
-          <span className="flex-1 truncate text-xs font-semibold text-foreground">
-            {match.homeTeam}
-          </span>
-          <div className="flex items-center gap-2 font-mono text-base font-black tabular-nums text-foreground">
-            <span>{showScore ? match.score?.home ?? "–" : ""}</span>
-            <span className="text-muted-foreground/60">·</span>
-            <span>{showScore ? match.score?.away ?? "–" : ""}</span>
-          </div>
-          <span className="flex-1 truncate text-right text-xs font-semibold text-foreground">
-            {match.awayTeam}
-          </span>
-        </div>
-        {modelFixture && (
-          <div data-testid="fixture-forecast" className="rounded-md border border-border/60 px-2 py-1.5">
-            <table className="w-full table-fixed font-mono text-[10px] tabular-nums" aria-label={`${match.homeTeam} versus ${match.awayTeam} forecast and market probabilities`}>
-              <thead className="text-muted-foreground">
-                <tr>
-                  <th scope="col" className="w-[52%] pb-1 text-left font-medium">Source</th>
-                  <th scope="col" className="pb-1 text-right font-medium">Home</th>
-                  <th scope="col" className="pb-1 text-right font-medium">Draw</th>
-                  <th scope="col" className="pb-1 text-right font-medium">Away</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <th scope="row" className="pr-2 text-left font-normal text-muted-foreground">My forecast</th>
-                  <td className="text-right text-primary">{formatPercent(modelFixture.pHome)}</td>
-                  <td className="text-right text-muted-foreground">{formatPercent(modelFixture.pDraw)}</td>
-                  <td className="text-right text-accent">{formatPercent(modelFixture.pAway)}</td>
-                </tr>
-                {marketRows.map((row) => (
-                  <tr key={row.id}>
-                    <th scope="row" className="break-words pr-2 pt-1 text-left align-top font-normal text-muted-foreground">
-                      <span className="block">{row.label}</span>
-                      {row.observedAt && (
-                        <time dateTime={row.observedAt} className="block text-[9px] leading-tight">
-                          {formatObservedAt(row.observedAt)}
-                        </time>
-                      )}
-                    </th>
-                    <td className="pt-1 text-right align-top text-foreground/80">{formatPercent(row.pHome)}</td>
-                    <td className="pt-1 text-right align-top text-foreground/80">{formatPercent(row.pDraw)}</td>
-                    <td className="pt-1 text-right align-top text-foreground/80">{formatPercent(row.pAway)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <div className="flex items-center justify-between gap-2">
-          {askHref ? (
-            <div className="min-w-0">
-              <Link
-                href={askHref}
-                className="text-xs font-semibold uppercase tracking-wide text-primary transition-colors hover:text-primary/80"
-              >
-                Ask about this match
-              </Link>
-              {recognized ? (
-                <CapabilityText capability={recognized.capability} />
-              ) : (
-                <p className="mt-0.5 text-[10px] text-amber-300/80">
-                  Forecast status temporarily unavailable · you can still ask
-                </p>
-              )}
-            </div>
-          ) : (
-            <span className="text-xs text-muted-foreground">{match.competition}</span>
-          )}
+      <div className="grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-3">
+        <div className="text-2xs uppercase tracking-wider text-quiet tabular-nums">
           {live ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-black uppercase text-red-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+            <span className="inline-flex items-center gap-1 font-semibold text-live">
+              <span className="size-1.5 rounded-full bg-live live-dot" aria-hidden />
               Live
             </span>
+          ) : finished ? "FT" : formatKickoffTime(match.utcDate)}
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Monogram name={match.homeTeam} />
+            <span className="truncate text-sm font-medium text-fg" title={match.homeTeam}>{match.homeTeam}</span>
+            <span className="ml-auto font-display text-lg tabular-nums leading-none">{showScore ? match.score?.home ?? "–" : ""}</span>
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <Monogram name={match.awayTeam} />
+            <span className="truncate text-sm font-medium text-fg" title={match.awayTeam}>{match.awayTeam}</span>
+            <span className="ml-auto font-display text-lg tabular-nums leading-none">{showScore ? match.score?.away ?? "–" : ""}</span>
+          </div>
+        </div>
+        <div className="hidden w-40 sm:block">
+          {modelFixture ? (
+            <ProbabilityStrip home={modelFixture.pHome} draw={modelFixture.pDraw} away={modelFixture.pAway} />
           ) : (
-            <span
-              className={cn(
-                "rounded-full px-2 py-0.5 text-xs font-bold uppercase",
-                finished ? "bg-secondary text-muted-foreground" : "bg-primary/10 text-primary"
-              )}
-            >
-              {finished ? "Full Time" : "Scheduled"}
-            </span>
+            <span className="text-2xs text-subtle">No forecast</span>
           )}
         </div>
+      </div>
+
+      {modelFixture && (
+        <div data-testid="fixture-forecast" className="mt-2 sm:ml-[4rem]">
+          <table className="w-full max-w-md table-fixed text-2xs tabular-nums" aria-label={`${match.homeTeam} versus ${match.awayTeam} forecast and market probabilities`}>
+            <thead className="text-subtle">
+              <tr>
+                <th scope="col" className="w-[46%] pb-1 text-left font-medium uppercase tracking-wider">Source</th>
+                <th scope="col" className="pb-1 text-right font-medium uppercase tracking-wider">Home</th>
+                <th scope="col" className="pb-1 text-right font-medium uppercase tracking-wider">Draw</th>
+                <th scope="col" className="pb-1 text-right font-medium uppercase tracking-wider">Away</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row" className="pr-2 text-left font-normal text-quiet">My forecast</th>
+                <td className="text-right text-fg">{formatPercent(modelFixture.pHome)}</td>
+                <td className="text-right text-fg">{formatPercent(modelFixture.pDraw)}</td>
+                <td className="text-right text-fg">{formatPercent(modelFixture.pAway)}</td>
+              </tr>
+            </tbody>
+          </table>
+          {marketRows.length > 0 ? (
+            <SourcesToggle className="mt-1.5" label="Market comparison" testId="fixture-market-sources">
+              <table className="w-full max-w-md table-fixed text-2xs tabular-nums" aria-label={`${match.homeTeam} versus ${match.awayTeam} market comparison`}>
+                <tbody>
+                  {marketRows.map((row) => (
+                    <tr key={row.id}>
+                      <th scope="row" className="w-[46%] break-words pr-2 pt-1 text-left align-top font-normal">
+                        <span className="block">{row.label}</span>
+                        {row.observedAt && (
+                          <time dateTime={row.observedAt} className="block text-[10px] leading-tight text-subtle">
+                            {formatObservedAt(row.observedAt)}
+                          </time>
+                        )}
+                      </th>
+                      <td className="pt-1 text-right align-top">{formatPercent(row.pHome)}</td>
+                      <td className="pt-1 text-right align-top">{formatPercent(row.pDraw)}</td>
+                      <td className="pt-1 text-right align-top">{formatPercent(row.pAway)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </SourcesToggle>
+          ) : null}
+        </div>
+      )}
+
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 sm:ml-[4rem]">
+        {askHref ? (
+          <div className="min-w-0">
+            <Link
+              href={askHref}
+              className="text-2xs font-semibold uppercase tracking-wider text-accent transition-colors hover:text-accent/80"
+            >
+              Ask about this match
+            </Link>
+            {recognized ? (
+              <CapabilityText capability={recognized.capability} />
+            ) : (
+              <p className="mt-0.5 text-2xs text-quiet">
+                Forecast status temporarily unavailable · you can still ask
+              </p>
+            )}
+          </div>
+        ) : (
+          <span className="text-2xs text-quiet">{match.competition}</span>
+        )}
+        <span className="text-2xs uppercase tracking-wider text-subtle">
+          {live ? "In play" : finished ? "Full time" : "Scheduled"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ProbabilityStrip({ home, draw, away }: { home: number; draw: number; away: number }) {
+  return (
+    <div>
+      <div className="flex h-1.5 overflow-hidden rounded-full bg-elevated" aria-hidden>
+        <span className="bg-accent" style={{ width: `${home * 100}%` }} />
+        <span className="bg-quiet/60" style={{ width: `${draw * 100}%` }} />
+        <span className="bg-fg/80" style={{ width: `${away * 100}%` }} />
+      </div>
+      <div className="mt-1 flex justify-between text-2xs tabular-nums text-quiet">
+        <span>{Math.round(home * 100)}</span>
+        <span>{Math.round(draw * 100)}</span>
+        <span>{Math.round(away * 100)}</span>
       </div>
     </div>
   );
@@ -303,136 +310,156 @@ function CapabilityText({ capability }: { capability: FixtureCapability }) {
   const tone = capabilityTone(capability);
   return (
     <p className={cn(
-      "mt-0.5 truncate text-[10px]",
-      tone === "ready" && "text-primary/80",
-      tone === "waiting" && "text-amber-300/80",
-      tone === "outside" && "text-muted-foreground",
+      "mt-0.5 truncate text-2xs",
+      tone === "ready" && "text-accent/80",
+      tone === "waiting" && "text-warn",
+      tone === "outside" && "text-quiet",
     )}>
       {capabilityLabel(capability)}
     </p>
   );
 }
 
-function isQualifyingPosition(competitionId: string, position: number): boolean {
-  if (competitionId === "eng.1") return position <= 4;
-  return false;
+/** Premier League zones for 2026-27 (UCL top 4; 5th can be added by coefficient). */
+function zoneFor(position: number, total: number): "ucl" | "europe" | "relegation" | null {
+  if (position <= 4) return "ucl";
+  if (position <= 6) return "europe";
+  if (position > total - 3) return "relegation";
+  return null;
 }
 
-function LeagueStandingsTable({
+const ZONE_CLASS = {
+  ucl: "border-l-2 border-l-accent",
+  europe: "border-l-2 border-l-quiet",
+  relegation: "border-l-2 border-l-down",
+} as const;
+
+function FormMarks({ form }: { form?: Array<"W" | "D" | "L"> }) {
+  if (!form?.length) return <span className="text-subtle">—</span>;
+  return (
+    <span className="inline-flex gap-0.5" aria-label={`Last ${form.length}: ${form.join(" ")}`}>
+      {form.slice(-5).map((mark, index) => (
+        <span
+          key={index}
+          aria-hidden
+          className={cn(
+            "flex size-4 items-center justify-center rounded-[3px] text-[9px] font-bold",
+            mark === "W" ? "bg-up/20 text-up" : mark === "L" ? "bg-down/20 text-down" : "bg-elevated text-quiet",
+          )}
+        >
+          {mark}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function LeagueTable({
   rows,
-  competitionId,
+  form,
 }: {
   rows: StandingResponse[];
-  competitionId: string;
+  form: Map<string, Array<"W" | "D" | "L">>;
 }) {
   const sorted = [...rows].sort((a, b) => a.position - b.position);
   return (
-    <div className="overflow-hidden rounded-xl border border-card-rim bg-card shadow-card">
-      <div className="border-b border-border bg-secondary/50 px-3 py-2">
-        <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
-          League table
-        </h4>
-      </div>
-      <table className="w-full text-xs">
+    <div className="overflow-x-auto">
+      <table data-testid="league-table" className="w-full text-sm tabular-nums" aria-label="Premier League table">
         <thead>
-          <tr className="text-left text-muted-foreground">
-            <th className="px-3 pb-1 pt-2 font-medium">Team</th>
-            <th className="pb-1 pt-2 text-center font-medium">P</th>
-            <th className="pb-1 pt-2 text-center font-medium">GD</th>
-            <th className="pb-1 pr-3 pt-2 text-center font-medium">Pts</th>
+          <tr className="border-b border-border text-2xs uppercase tracking-wider text-subtle">
+            <th scope="col" className="w-8 py-2 pl-3 text-left font-semibold">#</th>
+            <th scope="col" className="py-2 text-left font-semibold">Club</th>
+            <th scope="col" className="px-1 py-2 text-right font-semibold">P</th>
+            <th scope="col" className="px-1 py-2 text-right font-semibold">W</th>
+            <th scope="col" className="px-1 py-2 text-right font-semibold">D</th>
+            <th scope="col" className="px-1 py-2 text-right font-semibold">L</th>
+            <th scope="col" className="hidden px-1 py-2 text-right font-semibold sm:table-cell">GF</th>
+            <th scope="col" className="hidden px-1 py-2 text-right font-semibold sm:table-cell">GA</th>
+            <th scope="col" className="px-1 py-2 text-right font-semibold">GD</th>
+            <th scope="col" className="px-2 py-2 text-right font-semibold">Pts</th>
+            <th scope="col" className="hidden py-2 pr-3 text-left font-semibold md:table-cell">Form</th>
           </tr>
         </thead>
         <tbody>
-          {sorted.map((standing) => {
-            const qualifying = isQualifyingPosition(competitionId, standing.position);
+          {sorted.map((row) => {
+            const zone = zoneFor(row.position, sorted.length);
             return (
-              <tr
-                key={standing.team}
-                className={cn(
-                  "border-t border-border/40",
-                  qualifying ? "text-foreground" : "text-muted-foreground",
-                  qualifying && "border-l-2 border-primary/60",
-                )}
-              >
-                <td className="max-w-[160px] truncate px-3 py-1.5 font-semibold">
-                  <span className="flex items-center gap-1.5">
-                    {qualifying && (
-                      <span
-                        aria-label="Champions League qualification"
-                        title="Champions League qualification"
-                        className="font-mono text-[10px] leading-none text-primary"
-                      >
-                        •
-                      </span>
-                    )}
-                    <span className="truncate">{standing.team}</span>
+              <tr key={row.team} data-testid="league-table-row" className={cn("border-b border-border last:border-b-0", zone && ZONE_CLASS[zone])}>
+                <td className="py-1.5 pl-3 text-quiet">{row.position}</td>
+                <td className="max-w-[9rem] py-1.5">
+                  <span className="flex items-center gap-2">
+                    <Monogram name={row.team} />
+                    <span className="truncate font-medium">{row.team}</span>
                   </span>
                 </td>
-                <td className="py-1.5 text-center font-mono">{standing.playedGames}</td>
-                <td className="py-1.5 text-center font-mono">
-                  {standing.goalDifference > 0 ? `+${standing.goalDifference}` : standing.goalDifference}
-                </td>
-                <td className="py-1.5 pr-3 text-center font-mono font-black">{standing.points}</td>
+                <td className="px-1 py-1.5 text-right text-quiet">{row.playedGames}</td>
+                <td className="px-1 py-1.5 text-right text-quiet">{row.won}</td>
+                <td className="px-1 py-1.5 text-right text-quiet">{row.draw}</td>
+                <td className="px-1 py-1.5 text-right text-quiet">{row.lost}</td>
+                <td className="hidden px-1 py-1.5 text-right text-quiet sm:table-cell">{row.goalsFor}</td>
+                <td className="hidden px-1 py-1.5 text-right text-quiet sm:table-cell">{row.goalsAgainst}</td>
+                <td className="px-1 py-1.5 text-right">{row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}</td>
+                <td className="px-2 py-1.5 text-right font-display text-base leading-none">{row.points}</td>
+                <td className="hidden py-1.5 pr-3 md:table-cell"><FormMarks form={form.get(row.team)} /></td>
               </tr>
             );
           })}
         </tbody>
       </table>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border px-3 py-2 text-2xs text-quiet">
+        <span className="inline-flex items-center gap-1.5"><span className="h-3 w-0.5 bg-accent" aria-hidden />Champions League</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-3 w-0.5 bg-quiet" aria-hidden />Europa / Conference League</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-3 w-0.5 bg-down" aria-hidden />Relegation</span>
+      </div>
     </div>
   );
 }
 
-function stageLabel(stage: string | null): string {
-  if (!stage) return "";
-  return stage.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function GroupStandingsTable({
-  group,
-  rows,
-  stage,
-}: {
-  group: string;
-  rows: StandingResponse[];
-  stage: string | null;
-}) {
+function GroupTable({ group, rows }: { group: string; rows: StandingResponse[] }) {
   const sorted = [...rows].sort((a, b) => a.position - b.position);
-  const stageText = stage ? stageLabel(stage) : "";
   return (
-    <div className="overflow-hidden rounded-xl border border-card-rim bg-card shadow-card">
-      <div className="border-b border-border bg-secondary/50 px-3 py-2">
-        <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
-          Group {group}
-          {stageText && (
-            <span className="ml-2 font-mono text-[10px] font-normal normal-case tracking-wide text-muted-foreground">
-              · {stageText}
-            </span>
-          )}
-        </h4>
-      </div>
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-left text-muted-foreground">
-            <th className="px-3 pb-1 pt-2 font-medium">Team</th>
-            <th className="pb-1 pt-2 text-center font-medium">P</th>
-            <th className="pb-1 pt-2 text-center font-medium">GD</th>
-            <th className="pb-1 pr-3 pt-2 text-center font-medium">Pts</th>
-          </tr>
-        </thead>
+    <DeskSection title={`Group ${group}`}>
+      <table className="w-full text-sm tabular-nums">
         <tbody>
-          {sorted.map((standing) => (
-            <tr key={standing.team} className="border-t border-border/40 text-muted-foreground">
-              <td className="max-w-[120px] truncate px-3 py-1.5 font-semibold">{standing.team}</td>
-              <td className="py-1.5 text-center font-mono">{standing.playedGames}</td>
-              <td className="py-1.5 text-center font-mono">
-                {standing.goalDifference > 0 ? `+${standing.goalDifference}` : standing.goalDifference}
-              </td>
-              <td className="py-1.5 pr-3 text-center font-mono font-black">{standing.points}</td>
+          {sorted.map((row) => (
+            <tr key={row.team} className="border-b border-border last:border-b-0">
+              <td className="w-8 py-1.5 pl-3 text-quiet">{row.position}</td>
+              <td className="max-w-[9rem] truncate py-1.5">{row.team}</td>
+              <td className="px-1 py-1.5 text-right text-quiet">{row.playedGames}</td>
+              <td className="px-1 py-1.5 text-right">{row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}</td>
+              <td className="px-3 py-1.5 text-right font-display text-base leading-none">{row.points}</td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </DeskSection>
+  );
+}
+
+function useLeagueTable() {
+  const [rows, setRows] = useState<StandingResponse[]>([]);
+  const [form, setForm] = useState<Map<string, Array<"W" | "D" | "L">>>(new Map());
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([fetchStandings("eng.1"), fetchRecentMatches("eng.1")]).then(([standings, recent]) => {
+      if (cancelled) return;
+      setRows(standings.standings.filter((row) => !row.group && row.competitionId === "eng.1"));
+      setLastUpdated(standings.lastUpdated);
+      const clubForm: ClubFormResponse | undefined = recent.clubForm;
+      setForm(new Map((clubForm?.teams ?? []).map((team) => [team.team, team.form])));
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
+  return { rows, form, lastUpdated, loading };
+}
+
+function competitionTabClass(active: boolean) {
+  return cn(
+    "h-8 rounded-sm px-3 text-xs font-semibold uppercase tracking-wider transition-colors duration-150",
+    active ? "bg-panel text-fg" : "text-quiet hover:text-fg",
   );
 }
 
@@ -454,6 +481,7 @@ export default function FixturesPage() {
     reload,
   } =
     useFixturesData(selectedCompetition);
+  const league = useLeagueTable();
 
   useEffect(() => {
     let cancelled = false;
@@ -480,120 +508,118 @@ export default function FixturesPage() {
   const chronological = sortFixturesChronologically(matches);
   const recognizedById = recognizedFixtureMap(recognized);
   const modelById = new Map(modelFixtures.map((fixture) => [modelFixtureIdentity(fixture), fixture]));
+  const days: Array<{ day: string; matches: MatchResponse[] }> = [];
+  for (const match of chronological) {
+    const day = dayHeading(match.utcDate);
+    const last = days[days.length - 1];
+    if (last?.day === day) last.matches.push(match);
+    else days.push({ day, matches: [match] });
+  }
 
   const groupedStandings = Array.from(
     new Set(standings.map((row) => row.group).filter(Boolean))
   ) as string[];
   groupedStandings.sort();
-  const leagueStandings = standings.filter((row) => !row.group);
-  const standingsCompetitionId = leagueStandings[0]?.competitionId ?? selectedCompetition;
-
   const hasLive = matches.some((match) => match.status === "IN_PLAY");
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <PageHeader
+    <DeskPage>
+      <DeskPageHeader
+        eyebrow="Schedule · results · table"
         title="Fixtures"
-        eyebrow="Schedule · Standings"
-        subtitle="Live schedules from ESPN for enabled competitions."
-        lastUpdated={lastUpdated}
-        loading={loading}
-        sticky
-        rightSlot={hasLive && (
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-red-400"
-            aria-live="polite"
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" aria-hidden />
+        subtitle={<><Disclaimer /> <span>{KICKOFF_TIME_NOTE}</span></>}
+        right={hasLive ? (
+          <span className="inline-flex items-center gap-1.5 text-2xs uppercase tracking-wider text-live" aria-live="polite">
+            <span className="size-1.5 rounded-full bg-live live-dot" aria-hidden />
             Live · updated {sinceLast}s ago
           </span>
-        )}
+        ) : lastUpdated ? (
+          <span className="text-2xs text-subtle">Updated {formatObservedAt(lastUpdated)}</span>
+        ) : null}
       />
 
-      <p className="my-4 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <Disclaimer />
-        <span className="text-xs text-muted-foreground">{KICKOFF_TIME_NOTE}</span>
-      </p>
-
-      <div className="mb-6 flex flex-wrap gap-2">
-        {enabledTabs.map((tab) => (
-          <FilterPill
-            key={tab.id}
-            label={tab.name}
-            active={selectedCompetition === tab.id}
-            onClick={() => setSelectedCompetition(tab.id)}
-          />
-        ))}
-      </div>
-
-      {competitionError && (
-        <ErrorBanner message={competitionError} onRetry={() => setCompetitionRetry((attempt) => attempt + 1)} />
-      )}
-
-      {coverageWarning && (
-        <p className="-mt-4 mb-4 text-xs text-amber-300/80">
-          Some forecast or capability details are temporarily unavailable; the schedule remains current.
-        </p>
-      )}
-
-      {error && <ErrorBanner message={error} onRetry={reload} />}
-
-      {loading ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="h-32 animate-pulse rounded-xl bg-card" />
-          ))}
-        </div>
-      ) : matches.length === 0 ? (
-        <EmptyState message="No fixture data available for this competition right now." />
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-          {chronological.map((match) => (
-            <MatchRow
-              key={`${match.competitionId}-${match.id}`}
-              match={match}
-              recognized={recognizedById.get(modelFixtureIdentity({
-                competitionId: match.competitionId,
-                fixtureId: match.id,
-              }))}
-              modelFixture={modelById.get(modelFixtureIdentity({
-                competitionId: match.competitionId,
-                fixtureId: match.id,
-              }))}
-            />
-          ))}
-        </div>
-      )}
-
-      {leagueStandings.length > 0 && (
-        <div className="mt-10">
-          <h2 className="mb-3 font-heading text-base font-black uppercase tracking-tight text-foreground">
-            Standings
-          </h2>
-          <LeagueStandingsTable
-            rows={leagueStandings}
-            competitionId={standingsCompetitionId === ALL_TAB ? "eng.1" : standingsCompetitionId}
-          />
-        </div>
-      )}
-
-      {groupedStandings.length > 0 && (
-        <div className="mt-10">
-          <h2 className="mb-3 font-heading text-base font-black uppercase tracking-tight text-foreground">
-            Group Standings
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-            {groupedStandings.map((group) => (
-              <GroupStandingsTable
-                key={group}
-                group={group}
-                stage={matches.find((match) => match.group === group)?.stage ?? null}
-                rows={standings.filter((row) => row.group === group)}
-              />
+      <div className="mx-auto grid max-w-7xl gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+        <div className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Competition">
+            {enabledTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                aria-pressed={selectedCompetition === tab.id}
+                onClick={() => setSelectedCompetition(tab.id)}
+                className={competitionTabClass(selectedCompetition === tab.id)}
+              >
+                {tab.name}
+              </button>
             ))}
           </div>
+
+          {competitionError && (
+            <ErrorBanner message={competitionError} onRetry={() => setCompetitionRetry((attempt) => attempt + 1)} />
+          )}
+          {coverageWarning && (
+            <p className="text-2xs text-quiet">
+              Some forecast or capability details are temporarily unavailable; the schedule remains current.
+            </p>
+          )}
+          {error && <ErrorBanner message={error} onRetry={reload} />}
+
+          <DeskSection title="Fixtures and results" aside={loading ? "Loading…" : `${matches.length} matches`}>
+            {loading ? (
+              <div className="space-y-2 p-4">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <div key={index} className="h-12 animate-pulse rounded-sm bg-elevated" />
+                ))}
+              </div>
+            ) : matches.length === 0 ? (
+              <EmptyState message="No fixture data available for this competition right now." />
+            ) : (
+              days.map((group) => (
+                <div key={group.day}>
+                  <h3 className="border-b border-border bg-elevated px-4 py-1.5 text-2xs font-semibold uppercase tracking-wider text-quiet">
+                    {group.day}
+                  </h3>
+                  {group.matches.map((match) => (
+                    <MatchRow
+                      key={`${match.competitionId}-${match.id}`}
+                      match={match}
+                      recognized={recognizedById.get(modelFixtureIdentity({
+                        competitionId: match.competitionId,
+                        fixtureId: match.id,
+                      }))}
+                      modelFixture={modelById.get(modelFixtureIdentity({
+                        competitionId: match.competitionId,
+                        fixtureId: match.id,
+                      }))}
+                    />
+                  ))}
+                </div>
+              ))
+            )}
+          </DeskSection>
         </div>
-      )}
-    </div>
+
+        <div className="min-w-0 space-y-3 lg:sticky lg:top-16 lg:self-start">
+          <DeskSection
+            title="Premier League table"
+            aside={league.lastUpdated ? `Updated ${formatObservedAt(league.lastUpdated)}` : undefined}
+          >
+            {league.loading ? (
+              <div className="h-64 animate-pulse bg-elevated/40" />
+            ) : league.rows.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-quiet">The table is unavailable right now.</p>
+            ) : (
+              <LeagueTable rows={league.rows} form={league.form} />
+            )}
+          </DeskSection>
+          {groupedStandings.map((group) => (
+            <GroupTable key={group} group={group} rows={standings.filter((row) => row.group === group)} />
+          ))}
+          <SourcesToggle className="px-1">
+            <p>Schedules, results, table and form: ESPN. Forecasts: our club-season model. Market comparison: Kalshi, Polymarket and Stake, shown only behind each match’s market comparison toggle.</p>
+          </SourcesToggle>
+        </div>
+      </div>
+    </DeskPage>
   );
 }

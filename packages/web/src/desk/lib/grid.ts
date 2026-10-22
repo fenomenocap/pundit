@@ -206,3 +206,66 @@ export function samplePaperScore(fixture: { xg: [number, number] | null; scoreGr
   };
   return [poisson(fixture.xg[0]), poisson(fixture.xg[1])];
 }
+
+export type ScoreCell = { home: number; away: number; probability: number };
+
+export type ProjectedScore = {
+  /** Likeliest scoreline inside the favoured 1X2 outcome and the favoured side of 2.5 goals. */
+  score: ScoreCell;
+  /** Single likeliest scoreline on the whole grid (can disagree with the goals line). */
+  modal: ScoreCell;
+  outcome: "home" | "draw" | "away";
+  totals: "over" | "under";
+  pOutcome: number;
+  pOver: number;
+};
+
+function poissonPmf(lambda: number, k: number) {
+  let p = Math.exp(-lambda);
+  for (let i = 1; i <= k; i++) p *= lambda / i;
+  return p;
+}
+
+/** Independent-goals grid for legacy fixtures that carry only expected goals. */
+export function independentGoalsGrid(xg: [number, number], size = 11): number[][] {
+  if (xg.some((value) => !Number.isFinite(value) || value < 0 || value > 30)) {
+    throw new Error("Fixture has invalid goal estimates");
+  }
+  const grid = Array.from({ length: size }, (_, h) =>
+    Array.from({ length: size }, (_, a) => poissonPmf(xg[0], h) * poissonPmf(xg[1], a)));
+  const mass = grid.flat().reduce((sum, p) => sum + p, 0);
+  return grid.map((row) => row.map((p) => p / mass));
+}
+
+/**
+ * Deterministic projected score. Never a random draw: the same forecast always
+ * gives the same score, and it agrees with the favoured result and goals line.
+ */
+export function projectedScore(fixture: { xg: [number, number] | null; scoreGrid?: number[][] }): ProjectedScore | null {
+  let grid: number[][];
+  if (fixture.scoreGrid !== undefined) grid = fixture.scoreGrid;
+  else if (fixture.xg) grid = independentGoalsGrid(fixture.xg);
+  else return null;
+  const summary = scoreGridSummary(grid);
+  const outcomes = [
+    { key: "home" as const, p: summary.home },
+    { key: "draw" as const, p: summary.draw },
+    { key: "away" as const, p: summary.away },
+  ];
+  // Ties keep the earlier key, so the result is stable.
+  const outcome = outcomes.reduce((best, row) => (row.p > best.p + 1e-12 ? row : best));
+  const totals = summary.over >= 0.5 ? "over" : "under";
+  let modal: ScoreCell = { home: 0, away: 0, probability: -1 };
+  let score: ScoreCell = { home: 0, away: 0, probability: -1 };
+  for (let h = 0; h < grid.length; h++) {
+    for (let a = 0; a < grid.length; a++) {
+      const p = grid[h][a];
+      if (p > modal.probability + 1e-15) modal = { home: h, away: a, probability: p };
+      const inOutcome = outcome.key === "home" ? h > a : outcome.key === "away" ? a > h : h === a;
+      const inTotals = totals === "over" ? h + a > 2 : h + a <= 2;
+      if (inOutcome && inTotals && p > score.probability + 1e-15) score = { home: h, away: a, probability: p };
+    }
+  }
+  if (score.probability < 0) score = modal;
+  return { score, modal, outcome: outcome.key, totals, pOutcome: outcome.p, pOver: summary.over };
+}

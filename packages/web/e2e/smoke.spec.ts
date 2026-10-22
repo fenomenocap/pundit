@@ -236,7 +236,7 @@ test.describe("QA regressions", () => {
         expect(requests[index + 1]).toMatchObject({ question, history: [], voice: "desk", stream: false });
         expect(requests[index + 1]).not.toHaveProperty("fixtureContext");
         expect(requests[index + 1]).not.toHaveProperty("userLine");
-        await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v2")!).state.selectedId)).toBe(fixture.fixtureId);
+        await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v3")!).state.selectedId)).toBe(fixture.fixtureId);
       }
       await expect(page.getByTestId("desk-match-board")).toHaveCount(0);
       await expect(page.getByTestId("desk-user-bubble")).toHaveCount(5);
@@ -294,7 +294,7 @@ test.describe("QA regressions", () => {
       await expect(output).not.toContainText(/\d+(?:\.\d+)?\s*%|Fair decimal odds|Model probabilities|percentage points/i);
       if (path === "/") {
         await expect(page.getByTestId("desk-unpriced-notice")).toBeVisible();
-        await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v2")!).state.selectedId))
+        await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v3")!).state.selectedId))
           .toBe(fixture.fixtureId);
       }
       await input.fill("What about that match?");
@@ -331,7 +331,7 @@ test.describe("QA regressions", () => {
         await select.focus();
         await page.keyboard.press(key);
         await expect(select).toHaveAttribute("aria-pressed", "true");
-        await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v2")!).state.selectedId))
+        await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v3")!).state.selectedId))
           .toBe(`espn:eng.1:${id}`);
       }
       await expect(page.getByRole("button", { name: "Select Arsenal vs Chelsea", exact: true }))
@@ -351,7 +351,7 @@ test.describe("QA regressions", () => {
       await page.keyboard.press(key);
       await expect(page.locator("aside").getByText("Saka", { exact: true })).toBeVisible();
       await expect(saka).toBeDisabled();
-      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v2")!).state.draftTeams[3].picks))
+      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v3")!).state.draftTeams[3].picks))
         .toEqual(["saka"]);
     });
   }
@@ -984,7 +984,7 @@ test.describe("smoke", () => {
       await expect(resultBubble.getByRole("link", { name: "ESPN match record, 2026-09-19" })).toHaveAttribute("href", citation.url);
       await expect(resultBubble).toContainText("Brighton 3–0 Arsenal");
       await expect(resultBubble).not.toContainText("ARS–CHE");
-      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v2")!).state.selectedId)).toBe(fixtureId);
+      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v3")!).state.selectedId)).toBe(fixtureId);
       await input.fill("Back to that match: what is the 1X2?");
       await page.getByRole("button", { name: "Send" }).click();
       await expect(page.getByText("I still have Arsenal–Chelsea in view.")).toBeVisible();
@@ -1155,7 +1155,7 @@ test.describe("smoke", () => {
 
   test("desk tells the truth when the live slate has no priced fixtures or captured forecasts", async ({ page }) => {
     await page.addInitScript(() => {
-      localStorage.setItem("pundit-desk-v2", JSON.stringify({
+      localStorage.setItem("pundit-desk-v3", JSON.stringify({
         state: {
           cash: 9800,
           tickets: [

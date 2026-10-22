@@ -1,4 +1,5 @@
 import {
+  ClubFormResponse,
   MatchResponse,
   ModelFixtureResponse,
   RecognizedFixtureSnapshotRow,
@@ -39,6 +40,7 @@ export interface MatchesPayload {
   matches: MatchResponse[];
   lastUpdated: string | null;
   error: string | null;
+  clubForm?: ClubFormResponse;
 }
 
 export interface StandingsPayload {
@@ -226,6 +228,7 @@ export async function fetchRecentMatches(competition?: string): Promise<MatchesP
         matches: res.matches ?? [],
         lastUpdated: res.lastUpdated ?? null,
         error: res.error ?? null,
+        ...(res.clubForm ? { clubForm: res.clubForm } : {}),
       };
     } catch (reason) {
       return {
