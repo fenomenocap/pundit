@@ -69,7 +69,7 @@ export function FplBuilder() {
           Your squad is saved in this browser.
         </p>
         <p data-testid="fpl-data-attribution" className="mt-1 text-2xs text-subtle">
-          Player data: Fantasy Premier League (public). Not affiliated with the Premier League.
+          Simulator only. Player data from Fantasy Premier League (public). Not affiliated with the Premier League.
         </p>
       </header>
       {load.state === "loading" ? <p className="text-sm text-quiet">Loading players…</p> : null}
