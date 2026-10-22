@@ -24,8 +24,6 @@ export default defineConfig({
     timeout: 180_000,
     env: {
       NEXT_PUBLIC_USE_MOCK: "true",
-      // Exercise the FPL builder in tests; production builds leave it off (see src/lib/features.ts).
-      NEXT_PUBLIC_FPL_BUILDER: "on",
     },
   },
 });
