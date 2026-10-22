@@ -344,6 +344,23 @@ test.describe("QA regressions", () => {
       await expect(page.getByRole("button", { name: "Select Arsenal vs Chelsea", exact: true }))
         .toHaveAttribute("aria-pressed", "false");
     });
+
+    test(`draft player selection works with ${key} and unavailable players stay disabled`, async ({ page }) => {
+      await page.clock.install();
+      await page.goto("/draft");
+      await page.getByRole("button", { name: "Start practice draft" }).click();
+      await page.clock.runFor(2_401);
+      await expect(page.getByText("You are on the clock", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Draft Haaland", exact: true })).toBeDisabled();
+      const saka = page.getByRole("button", { name: "Draft Saka", exact: true });
+      await expect(saka).toBeEnabled();
+      await saka.focus();
+      await page.keyboard.press(key);
+      await expect(page.locator("aside").getByText("Saka", { exact: true })).toBeVisible();
+      await expect(saka).toBeDisabled();
+      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v3")!).state.draftTeams[3].picks))
+        .toEqual(["saka"]);
+    });
   }
 
   for (const width of [390, 1440]) {
@@ -522,7 +539,7 @@ test.describe("QA regressions", () => {
       expect(noteBox!.y).toBeGreaterThan(titleBox!.y + titleBox!.height);
       const mobile = width < 1280;
       const navigation = page.getByRole("navigation", { name: mobile ? "Mobile" : "Main navigation", exact: true });
-      const labels = mobile ? ["Desk", "Fixtures", "Slip", "FPL", "Record"] : ["Desk", "Fixtures", "Bet slip", "FPL", "Track record"];
+      const labels = mobile ? ["Desk", "Fixtures", "Slip", "Draft", "Record"] : ["Desk", "Fixtures", "Bet slip", "Draft", "Track record"];
       for (const name of labels) {
         await expect(navigation.getByRole("link", { name, exact: true })).toBeVisible();
       }
@@ -595,33 +612,22 @@ test.describe("QA regressions", () => {
     await page.screenshot({ path: testInfo.outputPath("bet-slip.png"), fullPage: true });
   });
 
-  test("FPL team builder enforces squad rules and saves the squad", async ({ page }, testInfo) => {
+  test("draft identifies computer opponents before and during play", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await routeFplPlayers(page);
     await page.goto("/draft");
-    await expect(page.getByRole("heading", { name: "FPL team builder" })).toBeVisible();
-    await expect(page.getByText("Not available", { exact: true }).first()).toBeVisible();
-    for (const name of ["Keeper1", "Keeper2"]) await page.getByRole("button", { name: `Add ${name}`, exact: true }).click();
-    await page.getByRole("button", { name: "Add Keeper3", exact: true }).click();
-    await expect(page.getByTestId("fpl-add-message")).toHaveText("You already have 2 goalkeepers.");
-    for (const name of ["Def1", "Def2", "Def3", "Def4", "Def5", "Mid1", "Mid2", "Mid3", "Mid4", "Mid5", "Fwd1", "Fwd2"]) {
-      await page.getByRole("button", { name: `Add ${name}`, exact: true }).click();
-    }
-    // Keeper1, Def1 and Def2 are ARS; Fwd3 is ARS too, so a 4th ARS player is blocked.
-    await page.getByRole("button", { name: "Add Fwd3", exact: true }).click();
-    await expect(page.getByTestId("fpl-add-message")).toHaveText("You already have 3 players from ARS.");
-    await page.getByRole("button", { name: "Add Fwd4", exact: true }).click();
-    await expect(page.getByTestId("fpl-squad-count")).toHaveText("15 / 15");
-    await expect(page.getByTestId("fpl-checks")).toContainText("Budget cannot be verified: 1 selected player has no price");
-    await expect(page.getByTestId("fpl-status")).toHaveText("Incomplete");
-    await page.getByRole("button", { name: "Make Mid1 captain", exact: true }).click();
-    await page.getByRole("button", { name: "Make Mid2 vice-captain", exact: true }).click();
-    await expect(page.getByTestId("fpl-checks")).toContainText("Captain chosen.");
-    await expect(page.getByTestId("fpl-checks")).toContainText("Vice-captain chosen.");
-    await page.screenshot({ path: testInfo.outputPath("fpl-builder-mobile.png"), fullPage: true });
+    await expect(page.getByText(/Practice against seven computer-controlled teams/)).toBeVisible();
+    await expect(page.getByText(/Player scores are demo inputs, not current-season statistics/)).toBeVisible();
+    await page.getByRole("button", { name: "Start practice draft" }).click();
+    await expect(page.getByText("Local practice · seven computer-controlled teams · illustrative player scores", { exact: true })).toBeVisible();
+    await expect(page.getByText("You are on the clock", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("row").filter({ hasText: "Saka" }).click();
+    await expect(page.locator("aside").getByText("Saka", { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("draft-mobile.png"), fullPage: true });
     await page.reload();
-    await expect(page.getByTestId("fpl-squad-count")).toHaveText("15 / 15");
-    await expect(page.getByTestId("fpl-builder-page")).not.toContainText(/Draftroom|practice draft|computer-controlled|Elo|Kalshi|NaN/);
+    await expect(page.getByText("Local practice · seven computer-controlled teams · illustrative player scores", { exact: true })).toBeVisible();
+    await expect(page.locator("aside").getByText("Saka", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Leave room" }).click();
+    await expect(page.getByRole("button", { name: "Start practice draft" })).toBeVisible();
   });
 
   for (const timezoneId of ["Asia/Singapore", "America/New_York"]) {
@@ -710,31 +716,6 @@ async function routePricedBetSlipSlate(page: Page) {
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({ matches: [], clubForm: { teams: [] } }),
-  }));
-}
-
-async function routeFplPlayers(page: Page) {
-  // Synthetic test players; prices are test inputs. Keeper2 has no price on purpose.
-  const spec: Array<[string, "GK" | "DEF" | "MID" | "FWD", string, number | null]> = [
-    ["Keeper1", "GK", "ARS", 5], ["Keeper2", "GK", "CHE", null], ["Keeper3", "GK", "LIV", 4.5],
-    ["Def1", "DEF", "ARS", 6], ["Def2", "DEF", "ARS", 5.5], ["Def3", "DEF", "CHE", 5], ["Def4", "DEF", "LIV", 4.5], ["Def5", "DEF", "FUL", 4.5],
-    ["Mid1", "MID", "LIV", 10], ["Mid2", "MID", "CHE", 8], ["Mid3", "MID", "FUL", 6], ["Mid4", "MID", "MCI", 5.5], ["Mid5", "MID", "MCI", 5],
-    ["Fwd1", "FWD", "MCI", 9], ["Fwd2", "FWD", "FUL", 7], ["Fwd3", "FWD", "ARS", 8], ["Fwd4", "FWD", "TOT", 6],
-  ];
-  const names: Record<string, string> = { ARS: "Arsenal", CHE: "Chelsea", LIV: "Liverpool", FUL: "Fulham", MCI: "Man City", TOT: "Spurs" };
-  await page.route("**/api/fpl", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({
-      source: "fpl-bootstrap-static",
-      fetchedAt: "2026-10-22T15:00:00.000Z",
-      gameweek: 8,
-      clubs: Object.entries(names).map(([code, name]) => ({ code, name })),
-      players: spec.map(([name, pos, club, price], i) => ({
-        id: i + 1, name, pos, club, clubName: names[club], price,
-        status: "a", chanceNextRound: null, news: null, totalPoints: 10 + i, form: null, selectedByPercent: null,
-      })),
-    }),
   }));
 }
 
@@ -1700,10 +1681,10 @@ test.describe("smoke", () => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: "Main navigation" });
     await expect(nav.getByRole("link", { name: "Desk" })).toBeVisible();
-    for (const name of ["Fixtures", "Bet slip", "FPL", "Track record"]) {
+    for (const name of ["Fixtures", "Bet slip", "Draft", "Track record"]) {
       await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
     }
-    for (const name of ["Paper", "Draft", "Vaults", "Model", "Ledger"]) {
+    for (const name of ["Paper", "Vaults", "Model", "Ledger"]) {
       await expect(nav.getByRole("link", { name, exact: true })).toHaveCount(0);
     }
     await expect(nav.getByText("WC Backtest")).not.toBeVisible();
