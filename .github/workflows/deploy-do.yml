@@ -1,0 +1,32 @@
+name: Deploy API (DigitalOcean)
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-do
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Deploy over SSH
+        env:
+          DO_DEPLOY_KEY: ${{ secrets.DO_DEPLOY_KEY }}
+          DO_KNOWN_HOSTS: ${{ secrets.DO_KNOWN_HOSTS }}
+          DO_HOST: ${{ secrets.DO_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DO_DEPLOY_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DO_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes root@"$DO_HOST" deploy
+      - name: Check live version
+        run: curl -fsS https://134-209-121-101.sslip.io/version
