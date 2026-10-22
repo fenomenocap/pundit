@@ -1,0 +1,1131 @@
+{
+ "schemaVersion": 1,
+ "protocol": {
+  "selectionSeason": "2023-24",
+  "developmentSeasons": [
+   "2024-25",
+   "2025-26"
+  ],
+  "holdout": "2026-27 sealed club-season matches, scored only after this file is written, from a 2026-07-01 fit",
+  "keepRule": "bootstrap 95% CI of composite log-loss delta entirely below 0, and five-bucket ECE increase at most 0.01",
+  "bootstrap": {
+   "resamples": 2000,
+   "seed": 20261022,
+   "unit": "match"
+  },
+  "ratingPolicy": "latest ClubElo publication dated strictly before the kickoff UTC date, at most 14 days old, both clubs present; pins fill dates absent from the mirror"
+ },
+ "winner": {
+  "name": "temperature-1.286",
+  "train": "long",
+  "decayDays": 180,
+  "teamPrecision": 100,
+  "homeAdvantageElo": 42,
+  "oneXTwoRho": -0.1,
+  "temperature": 1.286,
+  "totalScale": 1,
+  "goalBlend": 0,
+  "attackDefence": false
+ },
+ "iterations": [
+  {
+   "iteration": 0,
+   "name": "production-spec-long-history",
+   "hypothesis": "Production specification, refit each week on all earlier results (2018 onward).",
+   "decision": "baseline",
+   "reason": "Reference. Temperature is off. This is the honest walk-forward form of the current pin.",
+   "metrics": {
+    "n": 600,
+    "oneXTwo": {
+     "logLoss": 1.0191,
+     "brier": 0.6093,
+     "accuracy": 0.51,
+     "ece5": 0.0448
+    },
+    "over25": {
+     "logLoss": 0.6863,
+     "brier": 0.2466,
+     "ece": 0.0259,
+     "meanPredicted": 0.5778,
+     "observedRate": 0.5533
+    },
+    "btts": {
+     "logLoss": 0.6897,
+     "brier": 0.2481,
+     "ece": 0.0265,
+     "meanPredicted": 0.5673,
+     "observedRate": 0.5633
+    },
+    "scorelineLogLoss": 2.9598,
+    "compositeLogLoss": 2.3951
+   },
+   "bySeason": {
+    "2024-25": {
+     "n": 370,
+     "oneXTwo": {
+      "logLoss": 0.9994,
+      "brier": 0.5958,
+      "accuracy": 0.5162,
+      "ece5": 0.0411
+     },
+     "over25": {
+      "logLoss": 0.6822,
+      "brier": 0.2445,
+      "ece": 0.0341,
+      "meanPredicted": 0.5931,
+      "observedRate": 0.5622
+     },
+     "btts": {
+      "logLoss": 0.6915,
+      "brier": 0.249,
+      "ece": 0.0453,
+      "meanPredicted": 0.5758,
+      "observedRate": 0.5703
+     },
+     "scorelineLogLoss": 2.9826,
+     "compositeLogLoss": 2.3731
+    },
+    "2025-26": {
+     "n": 230,
+     "oneXTwo": {
+      "logLoss": 1.0509,
+      "brier": 0.6309,
+      "accuracy": 0.5,
+      "ece5": 0.0507
+     },
+     "over25": {
+      "logLoss": 0.6928,
+      "brier": 0.2498,
+      "ece": 0.0176,
+      "meanPredicted": 0.5533,
+      "observedRate": 0.5391
+     },
+     "btts": {
+      "logLoss": 0.6869,
+      "brier": 0.2468,
+      "ece": 0.0211,
+      "meanPredicted": 0.5537,
+      "observedRate": 0.5522
+     },
+     "scorelineLogLoss": 2.9231,
+     "compositeLogLoss": 2.4306
+    }
+   }
+  },
+  {
+   "iteration": 1,
+   "name": "two-season-window",
+   "hypothesis": "Refit each week on the current and previous season only, which is the 22 Oct 450-row procedure.",
+   "metrics": {
+    "n": 600,
+    "oneXTwo": {
+     "logLoss": 1.0191,
+     "brier": 0.6093,
+     "accuracy": 0.51,
+     "ece5": 0.0448
+    },
+    "over25": {
+     "logLoss": 0.6879,
+     "brier": 0.2474,
+     "ece": 0.0328,
+     "meanPredicted": 0.5777,
+     "observedRate": 0.5533
+    },
+    "btts": {
+     "logLoss": 0.6901,
+     "brier": 0.2483,
+     "ece": 0.0257,
+     "meanPredicted": 0.567,
+     "observedRate": 0.5633
+    },
+    "scorelineLogLoss": 2.9621,
+    "compositeLogLoss": 2.3971
+   },
+   "bySeason": {
+    "2024-25": {
+     "n": 370,
+     "oneXTwo": {
+      "logLoss": 0.9994,
+      "brier": 0.5958,
+      "accuracy": 0.5162,
+      "ece5": 0.0411
+     },
+     "over25": {
+      "logLoss": 0.6836,
+      "brier": 0.2452,
+      "ece": 0.0415,
+      "meanPredicted": 0.6007,
+      "observedRate": 0.5622
+     },
+     "btts": {
+      "logLoss": 0.6919,
+      "brier": 0.2492,
+      "ece": 0.0514,
+      "meanPredicted": 0.582,
+      "observedRate": 0.5703
+     },
+     "scorelineLogLoss": 2.9868,
+     "compositeLogLoss": 2.3749
+    },
+    "2025-26": {
+     "n": 230,
+     "oneXTwo": {
+      "logLoss": 1.0509,
+      "brier": 0.6309,
+      "accuracy": 0.5,
+      "ece5": 0.0507
+     },
+     "over25": {
+      "logLoss": 0.6948,
+      "brier": 0.2508,
+      "ece": 0.0249,
+      "meanPredicted": 0.5409,
+      "observedRate": 0.5391
+     },
+     "btts": {
+      "logLoss": 0.6872,
+      "brier": 0.247,
+      "ece": 0.0452,
+      "meanPredicted": 0.5429,
+      "observedRate": 0.5522
+     },
+     "scorelineLogLoss": 2.9222,
+     "compositeLogLoss": 2.4329
+    }
+   },
+   "deltaVsCurrent": {
+    "estimate": 0.002011,
+    "ci95": [
+     -0.001101,
+     0.00513
+    ],
+    "shareBelowZero": 0.1015,
+    "resamples": 2000,
+    "seed": 20261022
+   },
+   "ece5Delta": 0,
+   "decision": "rejected",
+   "reason": "Composite log-loss change 0.002011 has 95% interval [-0.001101, 0.00513], which does not lie entirely below 0."
+  },
+  {
+   "iteration": 2,
+   "name": "temperature-1.286",
+   "hypothesis": "Re-anchor the grid to the pre-specified T=1.286 1X2.",
+   "metrics": {
+    "n": 600,
+    "oneXTwo": {
+     "logLoss": 1.0058,
+     "brier": 0.602,
+     "accuracy": 0.51,
+     "ece5": 0.015
+    },
+    "over25": {
+     "logLoss": 0.6856,
+     "brier": 0.2462,
+     "ece": 0.0139,
+     "meanPredicted": 0.5667,
+     "observedRate": 0.5533
+    },
+    "btts": {
+     "logLoss": 0.6893,
+     "brier": 0.2479,
+     "ece": 0.0301,
+     "meanPredicted": 0.5752,
+     "observedRate": 0.5633
+    },
+    "scorelineLogLoss": 2.9465,
+    "compositeLogLoss": 2.3807
+   },
+   "bySeason": {
+    "2024-25": {
+     "n": 370,
+     "oneXTwo": {
+      "logLoss": 0.9882,
+      "brier": 0.5899,
+      "accuracy": 0.5162,
+      "ece5": 0.0165
+     },
+     "over25": {
+      "logLoss": 0.682,
+      "brier": 0.2444,
+      "ece": 0.0194,
+      "meanPredicted": 0.5815,
+      "observedRate": 0.5622
+     },
+     "btts": {
+      "logLoss": 0.6907,
+      "brier": 0.2486,
+      "ece": 0.0468,
+      "meanPredicted": 0.584,
+      "observedRate": 0.5703
+     },
+     "scorelineLogLoss": 2.9714,
+     "compositeLogLoss": 2.3609
+    },
+    "2025-26": {
+     "n": 230,
+     "oneXTwo": {
+      "logLoss": 1.0341,
+      "brier": 0.6216,
+      "accuracy": 0.5,
+      "ece5": 0.0248
+     },
+     "over25": {
+      "logLoss": 0.6915,
+      "brier": 0.2492,
+      "ece": 0.0158,
+      "meanPredicted": 0.543,
+      "observedRate": 0.5391
+     },
+     "btts": {
+      "logLoss": 0.687,
+      "brier": 0.2469,
+      "ece": 0.0346,
+      "meanPredicted": 0.5611,
+      "observedRate": 0.5522
+     },
+     "scorelineLogLoss": 2.9063,
+     "compositeLogLoss": 2.4126
+    }
+   },
+   "deltaVsCurrent": {
+    "estimate": -0.01444,
+    "ci95": [
+     -0.025877,
+     -0.002938
+    ],
+    "shareBelowZero": 0.9955,
+    "resamples": 2000,
+    "seed": 20261022
+   },
+   "ece5Delta": -0.0298,
+   "decision": "kept",
+   "reason": "Composite log-loss change -0.01444 [-0.025877, -0.002938]; ECE change -0.0298."
+  },
+  {
+   "iteration": 3,
+   "name": "temperature=1.1",
+   "hypothesis": "Choose one temperature on 2023/24 1X2 log loss, then freeze it.",
+   "selectedParameter": {
+    "name": "temperature",
+    "value": 1.1,
+    "selectionLoss": 0.940498,
+    "alternatives": {
+     "1": 0.941899,
+     "1.05": 0.940861,
+     "1.1": 0.940498,
+     "1.15": 0.940667,
+     "1.2": 0.941258,
+     "1.25": 0.94218,
+     "1.286": 0.943009,
+     "1.35": 0.94475,
+     "1.45": 0.947959
+    }
+   },
+   "metrics": {
+    "n": 600,
+    "oneXTwo": {
+     "logLoss": 1.0119,
+     "brier": 0.6054,
+     "accuracy": 0.51,
+     "ece5": 0.0356
+    },
+    "over25": {
+     "logLoss": 0.6859,
+     "brier": 0.2464,
+     "ece": 0.02,
+     "meanPredicted": 0.5734,
+     "observedRate": 0.5533
+    },
+    "btts": {
+     "logLoss": 0.6895,
+     "brier": 0.2481,
+     "ece": 0.0262,
+     "meanPredicted": 0.5705,
+     "observedRate": 0.5633
+    },
+    "scorelineLogLoss": 2.9526,
+    "compositeLogLoss": 2.3873
+   },
+   "bySeason": {
+    "2024-25": {
+     "n": 370,
+     "oneXTwo": {
+      "logLoss": 0.993,
+      "brier": 0.5924,
+      "accuracy": 0.5162,
+      "ece5": 0.0323
+     },
+     "over25": {
+      "logLoss": 0.682,
+      "brier": 0.2445,
+      "ece": 0.0269,
+      "meanPredicted": 0.5885,
+      "observedRate": 0.5622
+     },
+     "btts": {
+      "logLoss": 0.6912,
+      "brier": 0.2488,
+      "ece": 0.047,
+      "meanPredicted": 0.5791,
+      "observedRate": 0.5703
+     },
+     "scorelineLogLoss": 2.9762,
+     "compositeLogLoss": 2.3662
+    },
+    "2025-26": {
+     "n": 230,
+     "oneXTwo": {
+      "logLoss": 1.0424,
+      "brier": 0.6263,
+      "accuracy": 0.5,
+      "ece5": 0.0416
+     },
+     "over25": {
+      "logLoss": 0.6922,
+      "brier": 0.2495,
+      "ece": 0.01,
+      "meanPredicted": 0.5491,
+      "observedRate": 0.5391
+     },
+     "btts": {
+      "logLoss": 0.6869,
+      "brier": 0.2468,
+      "ece": 0.0406,
+      "meanPredicted": 0.5567,
+      "observedRate": 0.5522
+     },
+     "scorelineLogLoss": 2.9146,
+     "compositeLogLoss": 2.4215
+    }
+   },
+   "deltaVsCurrent": {
+    "estimate": 0.006692,
+    "ci95": [
+     -0.000052,
+     0.013494
+    ],
+    "shareBelowZero": 0.026,
+    "resamples": 2000,
+    "seed": 20261022
+   },
+   "ece5Delta": 0.0206,
+   "decision": "rejected",
+   "reason": "Composite log-loss change 0.006692 has 95% interval [-0.000052, 0.013494], which does not lie entirely below 0."
+  },
+  {
+   "iteration": 4,
+   "name": "homeAdvantageElo=70",
+   "hypothesis": "Choose home-advantage Elo on 2023/24 1X2 log loss, then freeze it.",
+   "selectedParameter": {
+    "name": "homeAdvantageElo",
+    "value": 70,
+    "selectionLoss": 0.940395,
+    "alternatives": {
+     "20": 0.949675,
+     "30": 0.946139,
+     "42": 0.943009,
+     "55": 0.940984,
+     "70": 0.940395,
+     "85": 0.941654
+    }
+   },
+   "metrics": {
+    "n": 600,
+    "oneXTwo": {
+     "logLoss": 1.0084,
+     "brier": 0.6035,
+     "accuracy": 0.505,
+     "ece5": 0.0173
+    },
+    "over25": {
+     "logLoss": 0.6855,
+     "brier": 0.2462,
+     "ece": 0.0146,
+     "meanPredicted": 0.5679,
+     "observedRate": 0.5533
+    },
+    "btts": {
+     "logLoss": 0.6895,
+     "brier": 0.2481,
+     "ece": 0.0297,
+     "meanPredicted": 0.5744,
+     "observedRate": 0.5633
+    },
+    "scorelineLogLoss": 2.9491,
+    "compositeLogLoss": 2.3834
+   },
+   "bySeason": {
+    "2024-25": {
+     "n": 370,
+     "oneXTwo": {
+      "logLoss": 0.9948,
+      "brier": 0.5938,
+      "accuracy": 0.5162,
+      "ece5": 0.0129
+     },
+     "over25": {
+      "logLoss": 0.6814,
+      "brier": 0.2442,
+      "ece": 0.0212,
+      "meanPredicted": 0.5827,
+      "observedRate": 0.5622
+     },
+     "btts": {
+      "logLoss": 0.6912,
+      "brier": 0.2488,
+      "ece": 0.0491,
+      "meanPredicted": 0.5832,
+      "observedRate": 0.5703
+     },
+     "scorelineLogLoss": 2.978,
+     "compositeLogLoss": 2.3674
+    },
+    "2025-26": {
+     "n": 230,
+     "oneXTwo": {
+      "logLoss": 1.0304,
+      "brier": 0.6192,
+      "accuracy": 0.487,
+      "ece5": 0.0244
+     },
+     "over25": {
+      "logLoss": 0.6922,
+      "brier": 0.2495,
+      "ece": 0.0104,
+      "meanPredicted": 0.5443,
+      "observedRate": 0.5391
+     },
+     "btts": {
+      "logLoss": 0.6869,
+      "brier": 0.2468,
+      "ece": 0.0426,
+      "meanPredicted": 0.5602,
+      "observedRate": 0.5522
+     },
+     "scorelineLogLoss": 2.9026,
+     "compositeLogLoss": 2.4095
+    }
+   },
+   "deltaVsCurrent": {
+    "estimate": 0.002821,
+    "ci95": [
+     -0.003548,
+     0.009991
+    ],
+    "shareBelowZero": 0.209,
+    "resamples": 2000,
+    "seed": 20261022
+   },
+   "ece5Delta": 0.0023,
+   "decision": "rejected",
+   "reason": "Composite log-loss change 0.002821 has 95% interval [-0.003548, 0.009991], which does not lie entirely below 0."
+  },
+  {
+   "iteration": 5,
+   "name": "oneXTwoRho=0",
+   "hypothesis": "Choose the baseline Dixon-Coles rho on 2023/24 1X2 log loss, then freeze it.",
+   "selectedParameter": {
+    "name": "oneXTwoRho",
+    "value": 0,
+    "selectionLoss": 0.940573,
+    "alternatives": {
+     "0": 0.940573,
+     "-0.2": 0.947012,
+     "-0.15": 0.94482,
+     "-0.1": 0.943009,
+     "-0.05": 0.941589
+    }
+   },
+   "metrics": {
+    "n": 600,
+    "oneXTwo": {
+     "logLoss": 1.0045,
+     "brier": 0.6016,
+     "accuracy": 0.51,
+     "ece5": 0.0199
+    },
+    "over25": {
+     "logLoss": 0.6861,
+     "brier": 0.2465,
+     "ece": 0.0227,
+     "meanPredicted": 0.5729,
+     "observedRate": 0.5533
+    },
+    "btts": {
+     "logLoss": 0.689,
+     "brier": 0.2478,
+     "ece": 0.0284,
+     "meanPredicted": 0.5712,
+     "observedRate": 0.5633
+    },
+    "scorelineLogLoss": 2.9451,
+    "compositeLogLoss": 2.3796
+   },
+   "bySeason": {
+    "2024-25": {
+     "n": 370,
+     "oneXTwo": {
+      "logLoss": 0.9864,
+      "brier": 0.5891,
+      "accuracy": 0.5162,
+      "ece5": 0.0213
+     },
+     "over25": {
+      "logLoss": 0.6826,
+      "brier": 0.2447,
+      "ece": 0.026,
+      "meanPredicted": 0.5877,
+      "observedRate": 0.5622
+     },
+     "btts": {
+      "logLoss": 0.6903,
+      "brier": 0.2484,
+      "ece": 0.0462,
+      "meanPredicted": 0.5801,
+      "observedRate": 0.5703
+     },
+     "scorelineLogLoss": 2.9697,
+     "compositeLogLoss": 2.3593
+    },
+    "2025-26": {
+     "n": 230,
+     "oneXTwo": {
+      "logLoss": 1.0334,
+      "brier": 0.6217,
+      "accuracy": 0.5,
+      "ece5": 0.028
+     },
+     "over25": {
+      "logLoss": 0.6917,
+      "brier": 0.2492,
+      "ece": 0.0173,
+      "meanPredicted": 0.549,
+      "observedRate": 0.5391
+     },
+     "btts": {
+      "logLoss": 0.6869,
+      "brier": 0.2468,
+      "ece": 0.0479,
+      "meanPredicted": 0.5568,
+      "observedRate": 0.5522
+     },
+     "scorelineLogLoss": 2.9057,
+     "compositeLogLoss": 2.412
+    }
+   },
+   "deltaVsCurrent": {
+    "estimate": -0.001148,
+    "ci95": [
+     -0.004942,
+     0.002757
+    ],
+    "shareBelowZero": 0.7125,
+    "resamples": 2000,
+    "seed": 20261022
+   },
+   "ece5Delta": 0.0049,
+   "decision": "rejected",
+   "reason": "Composite log-loss change -0.001148 has 95% interval [-0.004942, 0.002757], which does not lie entirely below 0."
+  },
+  {
+   "iteration": 6,
+   "name": "decay-365",
+   "hypothesis": "Lengthen the goal-model half-life from 180 to 365 days.",
+   "metrics": {
+    "n": 600,
+    "oneXTwo": {
+     "logLoss": 1.0058,
+     "brier": 0.602,
+     "accuracy": 0.51,
+     "ece5": 0.015
+    },
+    "over25": {
+     "logLoss": 0.6832,
+     "brier": 0.245,
+     "ece": 0.0086,
+     "meanPredicted": 0.5614,
+     "observedRate": 0.5533
+    },
+    "btts": {
+     "logLoss": 0.6884,
+     "brier": 0.2475,
+     "ece": 0.0252,
+     "meanPredicted": 0.5713,
+     "observedRate": 0.5633
+    },
+    "scorelineLogLoss": 2.943,
+    "compositeLogLoss": 2.3774
+   },
+   "bySeason": {
+    "2024-25": {
+     "n": 370,
+     "oneXTwo": {
+      "logLoss": 0.9882,
+      "brier": 0.5899,
+      "accuracy": 0.5162,
+      "ece5": 0.0165
+     },
+     "over25": {
+      "logLoss": 0.6812,
+      "brier": 0.244,
+      "ece": 0.0104,
+      "meanPredicted": 0.5689,
+      "observedRate": 0.5622
+     },
+     "btts": {
+      "logLoss": 0.6905,
+      "brier": 0.2485,
+      "ece": 0.0339,
+      "meanPredicted": 0.5736,
+      "observedRate": 0.5703
+     },
+     "scorelineLogLoss": 2.9666,
+     "compositeLogLoss": 2.3599
+    },
+    "2025-26": {
+     "n": 230,
+     "oneXTwo": {
+      "logLoss": 1.0341,
+      "brier": 0.6216,
+      "accuracy": 0.5,
+      "ece5": 0.0248
+     },
+     "over25": {
+      "logLoss": 0.6865,
+      "brier": 0.2467,
+      "ece": 0.0103,
+      "meanPredicted": 0.5494,
+      "observedRate": 0.5391
+     },
+     "btts": {
+      "logLoss": 0.6852,
+      "brier": 0.2459,
+      "ece": 0.0264,
+      "meanPredicted": 0.5675,
+      "observedRate": 0.5522
+     },
+     "scorelineLogLoss": 2.9051,
+     "compositeLogLoss": 2.4058
+    }
+   },
+   "deltaVsCurrent": {
+    "estimate": -0.003236,
+    "ci95": [
+     -0.007727,
+     0.001386
+    ],
+    "shareBelowZero": 0.9105,
+    "resamples": 2000,
+    "seed": 20261022
+   },
+   "ece5Delta": 0,
+   "decision": "rejected",
+   "reason": "Composite log-loss change -0.003236 has 95% interval [-0.007727, 0.001386], which does not lie entirely below 0."
+  },
+  {
+   "iteration": 7,
+   "name": "precision-25",
+   "hypothesis": "Loosen team-effect shrinkage from precision 100 to 25.",
+   "metrics": {
+    "n": 600,
+    "oneXTwo": {
+     "logLoss": 1.0058,
+     "brier": 0.602,
+     "accuracy": 0.51,
+     "ece5": 0.015
+    },
+    "over25": {
+     "logLoss": 0.687,
+     "brier": 0.2469,
+     "ece": 0.0415,
+     "meanPredicted": 0.5611,
+     "observedRate": 0.5533
+    },
+    "btts": {
+     "logLoss": 0.6912,
+     "brier": 0.2488,
+     "ece": 0.0262,
+     "meanPredicted": 0.5699,
+     "observedRate": 0.5633
+    },
+    "scorelineLogLoss": 2.9515,
+    "compositeLogLoss": 2.384
+   },
+   "bySeason": {
+    "2024-25": {
+     "n": 370,
+     "oneXTwo": {
+      "logLoss": 0.9882,
+      "brier": 0.5899,
+      "accuracy": 0.5162,
+      "ece5": 0.0165
+     },
+     "over25": {
+      "logLoss": 0.6824,
+      "brier": 0.2446,
+      "ece": 0.0446,
+      "meanPredicted": 0.5755,
+      "observedRate": 0.5622
+     },
+     "btts": {
+      "logLoss": 0.6923,
+      "brier": 0.2493,
+      "ece": 0.0352,
+      "meanPredicted": 0.5784,
+      "observedRate": 0.5703
+     },
+     "scorelineLogLoss": 2.977,
+     "compositeLogLoss": 2.3629
+    },
+    "2025-26": {
+     "n": 230,
+     "oneXTwo": {
+      "logLoss": 1.0341,
+      "brier": 0.6216,
+      "accuracy": 0.5,
+      "ece5": 0.0248
+     },
+     "over25": {
+      "logLoss": 0.6945,
+      "brier": 0.2505,
+      "ece": 0.0365,
+      "meanPredicted": 0.5379,
+      "observedRate": 0.5391
+     },
+     "btts": {
+      "logLoss": 0.6894,
+      "brier": 0.2479,
+      "ece": 0.044,
+      "meanPredicted": 0.5563,
+      "observedRate": 0.5522
+     },
+     "scorelineLogLoss": 2.9104,
+     "compositeLogLoss": 2.418
+    }
+   },
+   "deltaVsCurrent": {
+    "estimate": 0.003322,
+    "ci95": [
+     -0.003895,
+     0.01072
+    ],
+    "shareBelowZero": 0.1765,
+    "resamples": 2000,
+    "seed": 20261022
+   },
+   "ece5Delta": 0,
+   "decision": "rejected",
+   "reason": "Composite log-loss change 0.003322 has 95% interval [-0.003895, 0.01072], which does not lie entirely below 0."
+  },
+  {
+   "iteration": 8,
+   "name": "totalScale=1.12",
+   "hypothesis": "Choose a total-goals scale on 2023/24 over-2.5 plus BTTS log loss, then freeze it.",
+   "selectedParameter": {
+    "name": "totalScale",
+    "value": 1.12,
+    "selectionLoss": 1.318327,
+    "alternatives": {
+     "1": 1.332062,
+     "1.03": 1.325091,
+     "1.06": 1.32058,
+     "1.09": 1.318373,
+     "1.12": 1.318327
+    }
+   },
+   "metrics": {
+    "n": 600,
+    "oneXTwo": {
+     "logLoss": 1.0058,
+     "brier": 0.602,
+     "accuracy": 0.51,
+     "ece5": 0.015
+    },
+    "over25": {
+     "logLoss": 0.6998,
+     "brier": 0.2529,
+     "ece": 0.0823,
+     "meanPredicted": 0.6356,
+     "observedRate": 0.5533
+    },
+    "btts": {
+     "logLoss": 0.7006,
+     "brier": 0.2531,
+     "ece": 0.0785,
+     "meanPredicted": 0.6347,
+     "observedRate": 0.5633
+    },
+    "scorelineLogLoss": 2.9799,
+    "compositeLogLoss": 2.4062
+   },
+   "bySeason": {
+    "2024-25": {
+     "n": 370,
+     "oneXTwo": {
+      "logLoss": 0.9882,
+      "brier": 0.5899,
+      "accuracy": 0.5162,
+      "ece5": 0.0165
+     },
+     "over25": {
+      "logLoss": 0.698,
+      "brier": 0.2519,
+      "ece": 0.0878,
+      "meanPredicted": 0.65,
+      "observedRate": 0.5622
+     },
+     "btts": {
+      "logLoss": 0.7027,
+      "brier": 0.2539,
+      "ece": 0.0826,
+      "meanPredicted": 0.6428,
+      "observedRate": 0.5703
+     },
+     "scorelineLogLoss": 3.0072,
+     "compositeLogLoss": 2.3889
+    },
+    "2025-26": {
+     "n": 230,
+     "oneXTwo": {
+      "logLoss": 1.0341,
+      "brier": 0.6216,
+      "accuracy": 0.5,
+      "ece5": 0.0248
+     },
+     "over25": {
+      "logLoss": 0.7027,
+      "brier": 0.2544,
+      "ece": 0.0734,
+      "meanPredicted": 0.6125,
+      "observedRate": 0.5391
+     },
+     "btts": {
+      "logLoss": 0.6972,
+      "brier": 0.2517,
+      "ece": 0.0762,
+      "meanPredicted": 0.6215,
+      "observedRate": 0.5522
+     },
+     "scorelineLogLoss": 2.9361,
+     "compositeLogLoss": 2.434
+    }
+   },
+   "deltaVsCurrent": {
+    "estimate": 0.02548,
+    "ci95": [
+     0.006634,
+     0.044473
+    ],
+    "shareBelowZero": 0.0045,
+    "resamples": 2000,
+    "seed": 20261022
+   },
+   "ece5Delta": 0,
+   "decision": "rejected",
+   "reason": "Composite log-loss change 0.02548 has 95% interval [0.006634, 0.044473], which does not lie entirely below 0."
+  },
+  {
+   "iteration": 9,
+   "name": "goalBlend=0.5",
+   "hypothesis": "Choose a blend of the Elo 1X2 and the goal-model 1X2 on 2023/24, then freeze it.",
+   "selectedParameter": {
+    "name": "goalBlend",
+    "value": 0.5,
+    "selectionLoss": 0.940875,
+    "alternatives": {
+     "0": 0.943009,
+     "1": 0.943957,
+     "0.25": 0.941285,
+     "0.5": 0.940875,
+     "0.75": 0.941758
+    }
+   },
+   "metrics": {
+    "n": 600,
+    "oneXTwo": {
+     "logLoss": 1.0037,
+     "brier": 0.6009,
+     "accuracy": 0.51,
+     "ece5": 0.0173
+    },
+    "over25": {
+     "logLoss": 0.6861,
+     "brier": 0.2465,
+     "ece": 0.0186,
+     "meanPredicted": 0.572,
+     "observedRate": 0.5533
+    },
+    "btts": {
+     "logLoss": 0.689,
+     "brier": 0.2478,
+     "ece": 0.0254,
+     "meanPredicted": 0.5718,
+     "observedRate": 0.5633
+    },
+    "scorelineLogLoss": 2.9444,
+    "compositeLogLoss": 2.3788
+   },
+   "bySeason": {
+    "2024-25": {
+     "n": 370,
+     "oneXTwo": {
+      "logLoss": 0.9851,
+      "brier": 0.5881,
+      "accuracy": 0.5189,
+      "ece5": 0.022
+     },
+     "over25": {
+      "logLoss": 0.6828,
+      "brier": 0.2448,
+      "ece": 0.0248,
+      "meanPredicted": 0.5869,
+      "observedRate": 0.5622
+     },
+     "btts": {
+      "logLoss": 0.6904,
+      "brier": 0.2484,
+      "ece": 0.0467,
+      "meanPredicted": 0.5807,
+      "observedRate": 0.5703
+     },
+     "scorelineLogLoss": 2.9683,
+     "compositeLogLoss": 2.3583
+    },
+    "2025-26": {
+     "n": 230,
+     "oneXTwo": {
+      "logLoss": 1.0336,
+      "brier": 0.6216,
+      "accuracy": 0.4957,
+      "ece5": 0.0201
+     },
+     "over25": {
+      "logLoss": 0.6914,
+      "brier": 0.2491,
+      "ece": 0.0126,
+      "meanPredicted": 0.5479,
+      "observedRate": 0.5391
+     },
+     "btts": {
+      "logLoss": 0.6869,
+      "brier": 0.2468,
+      "ece": 0.0476,
+      "meanPredicted": 0.5576,
+      "observedRate": 0.5522
+     },
+     "scorelineLogLoss": 2.9059,
+     "compositeLogLoss": 2.4119
+    }
+   },
+   "deltaVsCurrent": {
+    "estimate": -0.001847,
+    "ci95": [
+     -0.006599,
+     0.002547
+    ],
+    "shareBelowZero": 0.7995,
+    "resamples": 2000,
+    "seed": 20261022
+   },
+   "ece5Delta": 0.0023,
+   "decision": "rejected",
+   "reason": "Composite log-loss change -0.001847 has 95% interval [-0.006599, 0.002547], which does not lie entirely below 0."
+  },
+  {
+   "iteration": 10,
+   "name": "attack-defence",
+   "hypothesis": "Replace the anchored Elo grid with a recency-weighted attack/defence Dixon-Coles grid fit on earlier results only.",
+   "metrics": {
+    "n": 600,
+    "oneXTwo": {
+     "logLoss": 1.0003,
+     "brier": 0.5977,
+     "accuracy": 0.51,
+     "ece5": 0.0102
+    },
+    "over25": {
+     "logLoss": 0.6886,
+     "brier": 0.2476,
+     "ece": 0.0713,
+     "meanPredicted": 0.5691,
+     "observedRate": 0.5533
+    },
+    "btts": {
+     "logLoss": 0.6873,
+     "brier": 0.247,
+     "ece": 0.0346,
+     "meanPredicted": 0.5737,
+     "observedRate": 0.5633
+    },
+    "scorelineLogLoss": 2.9479,
+    "compositeLogLoss": 2.3762
+   },
+   "bySeason": {
+    "2024-25": {
+     "n": 370,
+     "oneXTwo": {
+      "logLoss": 0.9865,
+      "brier": 0.5885,
+      "accuracy": 0.5189,
+      "ece5": 0.0082
+     },
+     "over25": {
+      "logLoss": 0.6836,
+      "brier": 0.2451,
+      "ece": 0.069,
+      "meanPredicted": 0.5845,
+      "observedRate": 0.5622
+     },
+     "btts": {
+      "logLoss": 0.686,
+      "brier": 0.2463,
+      "ece": 0.0319,
+      "meanPredicted": 0.5819,
+      "observedRate": 0.5703
+     },
+     "scorelineLogLoss": 2.9743,
+     "compositeLogLoss": 2.3561
+    },
+    "2025-26": {
+     "n": 230,
+     "oneXTwo": {
+      "logLoss": 1.0226,
+      "brier": 0.6124,
+      "accuracy": 0.4957,
+      "ece5": 0.0134
+     },
+     "over25": {
+      "logLoss": 0.6968,
+      "brier": 0.2515,
+      "ece": 0.0749,
+      "meanPredicted": 0.5444,
+      "observedRate": 0.5391
+     },
+     "btts": {
+      "logLoss": 0.6895,
+      "brier": 0.2481,
+      "ece": 0.039,
+      "meanPredicted": 0.5604,
+      "observedRate": 0.5522
+     },
+     "scorelineLogLoss": 2.9056,
+     "compositeLogLoss": 2.4089
+    }
+   },
+   "deltaVsCurrent": {
+    "estimate": -0.004371,
+    "ci95": [
+     -0.02508,
+     0.01559
+    ],
+    "shareBelowZero": 0.663,
+    "resamples": 2000,
+    "seed": 20261022
+   },
+   "ece5Delta": -0.0048,
+   "decision": "rejected",
+   "reason": "Composite log-loss change -0.004371 has 95% interval [-0.02508, 0.01559], which does not lie entirely below 0."
+  }
+ ]
+}
