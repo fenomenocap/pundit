@@ -44,16 +44,52 @@ export function level1x2RowsForTable(plan: PunditTakePlan, grounding: Grounding)
   return withinThreshold.length > 0 ? withinThreshold : plan.rows;
 }
 
+/** Second sentence of the side-v-draw level headline; take-validate allows it verbatim for level 1X2 plans. */
+export const LEVEL_1X2_SIDE_V_DRAW_TAIL = "I can't split them, so no side.";
+
+/**
+ * Headline for a level 1X2 (top two raw outcomes within COIN_FLIP_GAP_POINTS): no side is named as the pick.
+ * - Club v Draw near-tie: "{fixture} — {club} or a draw. I can't split them, so no side."
+ * - Two clubs, unequal rounded pcts: "{fixture} — level, 37% v 36%; I have no side." (higher first)
+ * - Equal rounded pcts: "{fixture} — level at 36% each; I have no side."
+ */
+export function formatLevel1x2SuppressedHeadline(
+  fixtureLabel: string,
+  grounding: Grounding,
+  variant: "full" | "why",
+): string {
+  const ranked = ([
+    { outcome: "home" as const, p: grounding.pHome },
+    { outcome: "draw" as const, p: grounding.pDraw },
+    { outcome: "away" as const, p: grounding.pAway },
+  ] as const).slice().sort((a, b) => b.p - a.p);
+  const [first, second] = ranked;
+  if (first.outcome === "draw" || second.outcome === "draw") {
+    const side = first.outcome === "draw" ? second : first;
+    const club = displayOutcomeLabel(grounding, side.outcome);
+    return variant === "why"
+      ? `On ${fixtureLabel}, ${club} or a draw. ${LEVEL_1X2_SIDE_V_DRAW_TAIL}`
+      : `${fixtureLabel} — ${club} or a draw. ${LEVEL_1X2_SIDE_V_DRAW_TAIL}`;
+  }
+  const higher = modelPctInt(first.p);
+  const lower = modelPctInt(second.p);
+  if (higher === lower) {
+    return variant === "why"
+      ? `On ${fixtureLabel}, the sides are level at ${higher}% each; I have no side.`
+      : `${fixtureLabel} — level at ${higher}% each; I have no side.`;
+  }
+  return variant === "why"
+    ? `On ${fixtureLabel}, it's level, ${higher}% v ${lower}%; I have no side.`
+    : `${fixtureLabel} — level, ${higher}% v ${lower}%; I have no side.`;
+}
+
 export function format1x2V2Headline(
   fixtureLabel: string,
   grounding: Grounding,
   variant: "full" | "why",
 ): string {
-  const pct = modelPctInt(Math.max(grounding.pHome, grounding.pDraw, grounding.pAway));
   if (is1x2SidePickSuppressed(grounding)) {
-    return variant === "why"
-      ? `On ${fixtureLabel}, the sides are level at ${pct}% each; I have no side.`
-      : `${fixtureLabel} — level at ${pct}% each; I have no side.`;
+    return formatLevel1x2SuppressedHeadline(fixtureLabel, grounding, variant);
   }
   const ranked = ([
     { outcome: "home" as const, p: grounding.pHome },
