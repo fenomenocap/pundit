@@ -9,6 +9,7 @@ import polymarketRoutes from "./routes/polymarkets";
 import modelRoutes from "./routes/model";
 import askRoutes, { askRateLimitConfig } from "./routes/ask";
 import evaluationRoutes from "./routes/evaluation";
+import fplRoutes from "./routes/fpl";
 import internalEvalRoutes from "./routes/internal-eval";
 import { getChatEvalRemoteJudgeReadiness } from "./services/eval-internal-auth";
 import {
@@ -265,6 +266,7 @@ app.use("/api/polymarkets", polymarketRoutes);
 app.use("/api/model", modelRoutes);
 app.use("/api/ask", askRoutes);
 app.use("/api/evaluation", evaluationRoutes);
+app.use("/api/fpl", fplRoutes);
 app.use("/internal/eval", internalEvalRoutes);
 app.use("/api/match-dossier", matchDossierRoutes);
 
