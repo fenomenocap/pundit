@@ -10,34 +10,38 @@ const ratings = () => ({ world: new Map<string, number>(),
 
 afterEach(() => { vi.useRealTimers(); vi.doUnmock("./epl-goal-calibration-artifact"); vi.resetModules(); });
 
-describe("a cached a502e436 forecast after a re-pin", () => {
-  it("still builds chat context and a complete ledger snapshot", async () => {
+describe("a cached a502e436 forecast after the 22 Oct re-pin", () => {
+  it("still builds chat context and a complete ledger snapshot under the real pin registry", async () => {
+    // Build the row the way production did on 10 Oct, when a502e436 was the current pin.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-10T09:43:45Z"));
+    vi.resetModules();
+    vi.doMock("./epl-goal-calibration-artifact", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("./epl-goal-calibration-artifact")>();
+      return { ...actual, EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN: "2026-10-07T00:00:00.000Z", EPL_GOAL_CALIBRATION_ARTIFACT_SHA256: A502,
+        EPL_GOAL_CALIBRATION_PINS: [{ sha256: A502, activationOrigin: "2026-10-07T00:00:00.000Z" }],
+        loadEplGoalCalibrationArtifact: (options: Parameters<typeof actual.loadEplGoalCalibrationArtifact>[0] = {}) =>
+          actual.loadEplGoalCalibrationArtifact({ expectedSha256: A502, activationOrigin: "2026-10-07T00:00:00.000Z", ...options }) };
+    });
     const { buildModelFixtureFromActive } = await import("./model-data");
     const fixture = buildModelFixtureFromActive(active, ratings())!;
     expect(fixture.goalCalibration?.artifactSha256).toBe(A502);
     // Give the row the rating provenance a production row carries, so completeness turns on calibration alone.
     fixture.forecastProvenance!.ratingSnapshotAt = fixture.forecastInputs!.ratingSnapshotAt = "2026-10-05T16:48:10.899Z";
     fixture.forecastProvenance!.ratingSourceState = "live";
-    const { buildSnapshotFromModel: controlSnapshot } = await import("./club-season-snapshots");
-    expect(controlSnapshot(fixture, "2026-10-10T10:03:52.375Z").provenanceCompleteness).toBe("complete");
 
+    // Now the real, re-pinned registry.
+    vi.doUnmock("./epl-goal-calibration-artifact");
     vi.resetModules();
-    vi.doMock("./epl-goal-calibration-artifact", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("./epl-goal-calibration-artifact")>();
-      return { ...actual, EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN: "2026-10-22T00:00:00.000Z",
-        EPL_GOAL_CALIBRATION_ARTIFACT_SHA256: "c".repeat(64),
-        EPL_GOAL_CALIBRATION_PINS: [{ sha256: "c".repeat(64), activationOrigin: "2026-10-22T00:00:00.000Z" },
-          { sha256: A502, activationOrigin: "2026-10-07T00:00:00.000Z" }] };
-    });
     vi.setSystemTime(new Date("2026-10-23T00:00:00Z"));
+    const artifacts = await import("./epl-goal-calibration-artifact");
+    expect(artifacts.EPL_GOAL_CALIBRATION_ARTIFACT_SHA256).not.toBe(A502);
+    expect(artifacts.EPL_GOAL_CALIBRATION_PINS.map((pin) => pin.sha256)).toContain(A502);
     const { buildMatchContext } = await import("./match-context");
     const { buildSnapshotFromModel } = await import("./club-season-snapshots");
     const context = buildMatchContext(fixture);
     expect(context.totalXg).toBeCloseTo(fixture.expectedHomeGoals! + fixture.expectedAwayGoals!, 12);
-    const snapshot = buildSnapshotFromModel(fixture, "2026-10-10T10:03:52.375Z");
-    expect(snapshot.provenanceCompleteness).toBe("complete");
+    expect(buildSnapshotFromModel(fixture, "2026-10-10T10:03:52.375Z").provenanceCompleteness).toBe("complete");
 
     const tampered = { ...fixture, goalCalibration: { ...fixture.goalCalibration!, artifactSha256: "b".repeat(64) } };
     expect(() => buildMatchContext(tampered)).toThrow();
