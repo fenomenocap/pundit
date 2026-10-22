@@ -75,4 +75,13 @@ describe("Take v2 flip + fair odds (agent scope)", () => {
     expect(prose).toMatch(/My fair prices:/);
     expect(prose).not.toMatch(/\bmodel\b/i);
   });
+  it("BTTS fair-odds question is answered on the BTTS market, not 1X2 fair prices", () => {
+    const grounding = spursCoventryGrounding();
+    const question = "Both teams to score in Tottenham v Coventry and what are fair odds?";
+    const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
+    const delivery = withPunditTakeRequestScope("v2", () =>
+      composePunditTakeDelivery(question, grounding, plan)!);
+    const prose = delivery.answer.split("\n\n| Outcome |")[0] ?? "";
+    expect(prose).not.toMatch(/My fair prices:/);
+  });
 });
