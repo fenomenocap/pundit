@@ -600,7 +600,7 @@ test.describe("QA regressions", () => {
     await routeFplPlayers(page);
     await page.goto("/draft");
     await expect(page.getByRole("heading", { name: "FPL team builder" })).toBeVisible();
-    await expect(page.getByTestId("fpl-data-attribution")).toHaveText("Player data: Fantasy Premier League (public). Not affiliated with the Premier League.");
+    await expect(page.getByTestId("fpl-data-attribution")).toHaveText("Simulator only. Player data from Fantasy Premier League (public). Not affiliated with the Premier League.");
     await expect(page.locator('[data-testid="fpl-builder-page"] img')).toHaveCount(0);
     await expect(page.getByText("Not available", { exact: true }).first()).toBeVisible();
     for (const name of ["Keeper1", "Keeper2"]) await page.getByRole("button", { name: `Add ${name}`, exact: true }).click();
