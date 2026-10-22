@@ -3,6 +3,7 @@ import { isExactDeterministicPassPlayOpener } from "./take-pass-play-opener";
 import { sentenceUsesDisallowedNumber } from "./take-allowed-numbers";
 import { applyV2TakeProseGuards, collectAllowedNumbers } from "./take-number-check";
 import { applyV2ProseHygiene } from "./take-v2-prose-hygiene";
+import { LEVEL_1X2_SIDE_V_DRAW_TAIL } from "./take-headline";
 
 export const TAKE_PROSE_BANNED_PATTERN =
   /\b(?:Elo|ClubElo|Kalshi|Polymarket|Dixon-Coles|model-grounded)\b|Why:|Risk:|Lean:|Model:|#\s*[a-f0-9]{6,}|SGT\b|\b\d{1,2}\s(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i;
@@ -111,6 +112,8 @@ function sentenceMapsToPlan(sentence: string, plan: PunditTakePlan): boolean {
   if (/ — .+ — I play\.$/.test(sentence)) return true;
   if (new RegExp(`^On ${escapeRegExp(plan.fixtureLabel)}, I have`).test(sentence)) return true;
   if (new RegExp(`^${escapeRegExp(plan.fixtureLabel)} —`).test(sentence)) return true;
+  // Second sentence of the deterministic side-v-draw level headline (formatLevel1x2SuppressedHeadline).
+  if (plan.levelNoSide === true && plan.marketKind === "1x2" && sentence === LEVEL_1X2_SIDE_V_DRAW_TAIL) return true;
 
   const seeds = [
     ...plan.supporting,
