@@ -16,7 +16,7 @@ import {
   type PlayerEvidenceBundle,
 } from "./player-evidence";
 import { buildResponseFacts, factById } from "./response-facts";
-import { projectedScoreFromScorelines, scorelinesFromGrid } from "./projected-score";
+import { projectedScoreFromScorelines } from "./projected-score";
 import {
   asksOver25Only,
   asksScorelineBoard,
@@ -801,8 +801,7 @@ export function composeMatchResponse(
     const singularScoreAsk = /\b(?:most likely|correct|projected|predicted)\s+score\b|\bwhat(?:'s| is) the (?:final )?score\b/i.test(question);
     if (singularScoreAsk && !score) {
       const projected = projectedScoreFromScorelines(
-        scorelinesFromGrid(grounding.scoreGrid)
-          ?? (grounding.scorelines?.length ? grounding.scorelines : grounding.topScores),
+        grounding.scorelines?.length ? grounding.scorelines : grounding.topScores,
         grounding,
       );
       if (projected) {
