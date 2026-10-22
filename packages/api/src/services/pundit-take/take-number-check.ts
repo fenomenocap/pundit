@@ -244,6 +244,43 @@ export function sentenceMakesUnbackedValueClaim(sentence: string, plan: PunditTa
   return !quoted.some((d) => market.has(d));
 }
 
+/**
+ * Explicit team-style / tactical lexicon. A sentence that asserts one of these is dropped unless a plan
+ * seed (supporting, contradicting, flip) already states the same style term. Kept narrow on purpose:
+ * generic risk lines ("if the first hour stays goalless") carry none of these terms.
+ */
+const TACTICAL_STYLE_TERMS: ReadonlyArray<{ id: string; pattern: RegExp }> = [
+  { id: "low block", pattern: /\blow[- ]block\b/i },
+  { id: "deep block", pattern: /\bdeep[- ]block\b/i },
+  { id: "high press", pattern: /\bhigh[- ]press(?:ing)?\b/i },
+  { id: "pressing game", pattern: /\bpressing (?:game|side|team|style)\b/i },
+  { id: "gegenpress", pattern: /\bgegenpress\w*\b/i },
+  { id: "high line", pattern: /\bhigh (?:defensive )?line\b/i },
+  { id: "counter-attack", pattern: /\bcounter[- ]?attack\w*\b|\bon the counter\b|\bon the break\b/i },
+  { id: "park the bus", pattern: /\bpark(?:s|ed|ing)? the bus\b/i },
+  { id: "possession", pattern: /\bpossession[- ](?:heavy|based|game|football|side)\b|\bdominate(?:s|d)? possession\b|\bkeep(?:s)? the ball\b/i },
+  { id: "set-piece threat", pattern: /\bset[- ]piece (?:threat|danger|strength|prowess)\b|\bdangerous from set[- ]pieces\b/i },
+  { id: "aerial threat", pattern: /\baerial (?:threat|danger|prowess)\b/i },
+  { id: "long ball", pattern: /\blong[- ]ball\b/i },
+  { id: "sit deep", pattern: /\bsit(?:s|ting)? (?:deep|back)\b/i },
+];
+
+function planSeedText(plan: PunditTakePlan): string {
+  return [
+    ...(plan.supporting ?? []),
+    ...(plan.contradicting ?? []),
+    ...(plan.flipCondition ? [plan.flipCondition] : []),
+  ].map((seed) => seed.text).join(" ");
+}
+
+/** True when the sentence asserts a team style / tactic that no plan seed states. */
+export function sentenceMakesUnsupportedStyleClaim(sentence: string, plan: PunditTakePlan): boolean {
+  const hits = TACTICAL_STYLE_TERMS.filter((term) => term.pattern.test(sentence));
+  if (hits.length === 0) return false;
+  const seeds = planSeedText(plan);
+  return hits.some((term) => !term.pattern.test(seeds));
+}
+
 function splitGuardSentences(prose: string): string[] {
   return prose
     .split(/\n\n+/)
@@ -260,6 +297,7 @@ export function applyV2TakeProseGuards(prose: string, plan: PunditTakePlan): str
     const coinFlip = plan.numericFacts?.coinFlip ?? false;
     if (sentenceHasForbiddenTossUpLanguage(sentence, coinFlip)) continue;
     if (sentenceMakesUnbackedValueClaim(sentence, plan)) continue;
+    if (sentenceMakesUnsupportedStyleClaim(sentence, plan)) continue;
     if (plan.numericFacts && sentenceFailsTableGapCheck(sentence, plan.numericFacts)) {
       continue;
     }
