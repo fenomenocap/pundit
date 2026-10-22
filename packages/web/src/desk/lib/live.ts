@@ -9,7 +9,7 @@ import type { TeamId } from "./data/teams";
 import { TEAM_LIST, TEAMS, teamIdFromName } from "./data/teams";
 import { pickDeskMarketQuote } from "./market-quote";
 import { ratingComparison } from "./rating-words";
-import { deskNumbersFromModelRow, type ModelRowLambdas } from "./grid";
+import { deskNumbersFromModelRow, projectedScore, type ModelRowLambdas } from "./grid";
 
 export const LIVE_API =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
@@ -168,15 +168,29 @@ function briefFor(row: LiveModelRow, home: TeamId, away: TeamId, lean: MarketKey
   const menA = scorersForTeam(away, 2).map((p) => p.name).join(", ");
   const formH = FORM[home]?.join("") ?? "";
   const formA = FORM[away]?.join("") ?? "";
+  let projection: ReturnType<typeof projectedScore> = null;
+  try {
+    projection = row.scoreGrid
+      ? projectedScore({ xg, scoreGrid: row.scoreGrid, model: { home: row.pHome, draw: row.pDraw, away: row.pAway } })
+      : null;
+  } catch {
+    projection = null;
+  }
   const top = row.topScores?.[0];
+  const cell = (c: { home: number; away: number }) => `${c.home}-${c.away}`;
   const parts = [
     ratingComparison(TEAMS[home].short, TEAMS[away].short, row.homeElo, row.awayElo),
     `Form ${formH} / ${formA}.`,
     `Expected goals ${xg[0].toFixed(2)}–${xg[1].toFixed(2)}.`,
     `1X2 ${(row.pHome * 100).toFixed(0)}/${(row.pDraw * 100).toFixed(0)}/${(row.pAway * 100).toFixed(0)}.`,
     `BTTS ${(row.pBttsYes * 100).toFixed(0)}% · Over 2.5 ${(over * 100).toFixed(0)}%.`,
-    // Same grid cell and precision as /fixtures and the chat (e.g. 2-0 16.4%).
-    top ? `Likeliest single score ${top.score} (${pct1(top.probability)}).` : "",
+    // Same rule and precision as the desk card, /fixtures and the chat (e.g. 2-0 16.4%).
+    projection
+      ? `Most likely: ${cell(projection.score)} (${pct1(projection.score.probability)}).`
+        + (cell(projection.modal) !== cell(projection.score)
+          ? ` Single likeliest score ${cell(projection.modal)} (${pct1(projection.modal.probability)}).`
+          : "")
+      : top ? `Single likeliest score ${top.score} (${pct1(top.probability)}).` : "",
     menH || menA ? `Recent scorers: ${menH} · ${menA}.` : "",
   ];
   return parts.filter(Boolean).join(" ");

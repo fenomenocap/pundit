@@ -14,6 +14,7 @@ import {
 } from "@/lib/mock-data";
 import { ClubCrest } from "@/desk/components/kit";
 import { formalTeamName } from "@/desk/lib/data/teams";
+import { projectedScore } from "@/desk/lib/grid";
 import {
   favouredOutcome,
   fixtureKey,
@@ -303,6 +304,25 @@ function MatchRow({
                 ))}
               </div>
               <div className="space-y-0.5">
+                {(() => {
+                  let projection: ReturnType<typeof projectedScore> = null;
+                  try {
+                    projection = modelFixture.scoreGrid
+                      ? projectedScore({ xg: null, scoreGrid: modelFixture.scoreGrid,
+                        model: { home: modelFixture.pHome, draw: modelFixture.pDraw, away: modelFixture.pAway } })
+                      : null;
+                  } catch {
+                    projection = null;
+                  }
+                  return projection ? (
+                    <div data-testid="fixture-projected-score" className="flex justify-between gap-2">
+                      <span>Most likely</span>
+                      <span className="text-fg">
+                        {projection.score.home}-{projection.score.away} {formatPercent(projection.score.probability)}
+                      </span>
+                    </div>
+                  ) : null;
+                })()}
                 <div className="uppercase tracking-wider text-subtle">Likely scorelines</div>
                 {modelFixture.topScores.slice(0, 3).map(({ score, probability }) => (
                   <div key={score} className="flex justify-between gap-2">

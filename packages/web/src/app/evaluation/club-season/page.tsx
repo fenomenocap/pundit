@@ -290,9 +290,10 @@ export default function TrackRecordPage() {
               projected score all come from one table of scoreline chances, so they always agree with each other.
             </p>
             <p>
-              <span className="text-fg">Projected score.</span> The likeliest scoreline inside the favoured result and
-              the favoured side of 2.5 goals. It is not a prediction of the exact score: even the single likeliest
-              score usually has well under a one-in-five chance.
+              <span className="text-fg">Projected score.</span> The likeliest scoreline within the most likely result. The
+              single likeliest score on the whole table is shown as a second line when it differs (often 1-1, because
+              draws concentrate in one score while wins are spread over several). It is not a prediction of the exact
+              score: even the single likeliest score usually has well under a one-in-five chance.
             </p>
             <p>
               <span className="text-fg">Markets.</span> Market prices are shown only for comparison. They are never

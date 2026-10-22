@@ -195,7 +195,8 @@ describe("V2 conversational architecture", () => {
       grounding(),
       planResponse("Projected score", { groundingKind: "match" })
     );
-    expect(projected).toMatch(/The likeliest scoreline on .* is 2-1\./);
+    expect(projected).toMatch(/Most likely on .*: 2-1\./);
+    expect(projected).not.toMatch(/Poisson|Lean:|\bplay\b/i);
     expect(projected).not.toMatch(/team news|2\.70|Etihad/i);
     expect(planResponse("Who scores?", { groundingKind: "match" }).evidenceRequired).toBe(true);
     expect(planResponse("Anytime scorer?", { groundingKind: "match" }).mode).toBe("player-or-scorer");
