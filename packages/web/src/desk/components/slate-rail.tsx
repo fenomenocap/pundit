@@ -63,12 +63,12 @@ export function SlateRail() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <KitPip team={f.home} />
-                      <span className="font-medium truncate text-sm">{TEAMS[f.home].short}</span>
+                      <span className="font-medium truncate text-sm">{TEAMS[f.home].name}</span>
                       <FormDots team={f.home} size="sm" />
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       <KitPip team={f.away} />
-                      <span className="font-medium truncate text-sm">{TEAMS[f.away].short}</span>
+                      <span className="font-medium truncate text-sm">{TEAMS[f.away].name}</span>
                       <FormDots team={f.away} size="sm" />
                     </div>
                   </div>

@@ -73,7 +73,7 @@ export function TeamMark({
     <span className="inline-flex items-center gap-2 min-w-0">
       <KitPip team={team} size={size} />
       {withName ? (
-        <span className="truncate font-medium tracking-tight">{TEAMS[team].short}</span>
+        <span className="truncate font-medium tracking-tight">{TEAMS[team].name}</span>
       ) : null}
     </span>
   );

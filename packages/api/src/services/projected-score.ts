@@ -52,3 +52,20 @@ export function projectedScoreFromScorelines(
   const chosen = lead ?? modal;
   return { score: chosen.score, probability: chosen.probability, outcome, pOutcome: p, modal };
 }
+
+/**
+ * Full-precision scorelines from the model grid. Round once, at display time:
+ * the 4dp topScores/scorelines rows double-round (0.163463 -> 0.1635 -> 16.4%)
+ * while the web rounds the grid cell once (16.3%).
+ */
+export function scorelinesFromGrid(grid: readonly (readonly number[])[] | null | undefined): ScorelineRow[] | null {
+  if (!Array.isArray(grid) || grid.length === 0) return null;
+  const rows: ScorelineRow[] = [];
+  grid.forEach((row, home) => {
+    if (!Array.isArray(row)) return;
+    row.forEach((probability, away) => {
+      if (Number.isFinite(probability)) rows.push({ score: `${home}-${away}`, probability });
+    });
+  });
+  return rows.length ? rows : null;
+}

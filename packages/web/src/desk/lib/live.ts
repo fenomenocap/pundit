@@ -10,6 +10,7 @@ import { TEAM_LIST, TEAMS, teamIdFromName } from "./data/teams";
 import { pickDeskMarketQuote } from "./market-quote";
 import { ratingComparison } from "./rating-words";
 import { deskNumbersFromModelRow, projectedScore, type ModelRowLambdas } from "./grid";
+import { roundedPercent } from "../../lib/fixture-presentation";
 
 export const LIVE_API =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
@@ -160,7 +161,7 @@ function comparisonOdds(quote: ReturnType<typeof pickDeskMarketQuote>): Fixture[
 }
 
 function pct1(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
+  return roundedPercent(value, 1);
 }
 
 function briefFor(row: LiveModelRow, home: TeamId, away: TeamId, lean: MarketKey, over: number, xg: [number, number]): string {
@@ -179,7 +180,7 @@ function briefFor(row: LiveModelRow, home: TeamId, away: TeamId, lean: MarketKey
   const top = row.topScores?.[0];
   const cell = (c: { home: number; away: number }) => `${c.home}-${c.away}`;
   const parts = [
-    ratingComparison(TEAMS[home].short, TEAMS[away].short, row.homeElo, row.awayElo),
+    ratingComparison(TEAMS[home].name, TEAMS[away].name, row.homeElo, row.awayElo),
     `Form ${formH} / ${formA}.`,
     `Expected goals ${xg[0].toFixed(2)}–${xg[1].toFixed(2)}.`,
     `1X2 ${(row.pHome * 100).toFixed(0)}/${(row.pDraw * 100).toFixed(0)}/${(row.pAway * 100).toFixed(0)}.`,
@@ -265,7 +266,7 @@ function toSettled(m: LiveMatch): Fixture | null {
     xg: prior?.xg ?? null,
     model: prior?.model ?? null,
     odds: prior?.odds ?? null,
-    brief: prior?.brief ?? `${TEAMS[home].short} ${score ? score[0] : "?"}–${score ? score[1] : "?"} ${TEAMS[away].short}.`,
+    brief: prior?.brief ?? `${TEAMS[home].name} ${score ? score[0] : "?"}–${score ? score[1] : "?"} ${TEAMS[away].name}.`,
     modelPick: prior?.modelPick ?? null,
     modelHit: won,
   };
