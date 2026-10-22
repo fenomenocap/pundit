@@ -1,0 +1,33 @@
+name: Model pin expiry
+
+# Daily sweep, 08:00 SGT (00:00 UTC). Fails (GitHub notifies) once the EPL goal
+# calibration or the ClubElo pin is within 7 days of its hard 30-day expiry.
+# Offline: reads committed files only, uses no secrets, never deploys.
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-expiry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Fail if a model pin expires within 7 days
+        run: pnpm --filter @sports-predict/api check:model-expiry
