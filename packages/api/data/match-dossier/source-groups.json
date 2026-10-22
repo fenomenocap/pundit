@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "updatedAt": "2026-10-20T13:30:00+08:00",
-  "owner": "Xavi (fakexavi) via CTO",
+  "owner": "Owner via CTO",
   "rules": [
     "Group chosen by field, not by query text.",
     "Primary first, then at most one fallback; corroborateOnly sources may confirm a fact the primary/fallback already has, never add one.",
     "If primary and fallback lack the fact, say nothing.",
     "Third-party predictions, xG, ratings and odds never set our probabilities.",
-    "Paid sources are deferred until Xavi says yes.",
+    "Paid sources are deferred until the owner says yes.",
     "Scoped search is allowed only inside a group's searchIncludeDomains and only for groups whose access includes a search template; open web search is out of the fact path.",
     "Exception: the odds/market group is aggregate-all, not primary/fallback."
   ],
@@ -479,7 +479,7 @@
       ],
       "searchAllowed": false,
       "queryTemplate": "{home} v {away} {competition} {kickoff_date} (corroborate-only lookup; facts come from structured APIs)",
-      "notes": "Shown once, separate Consensus view; never set or blend our probabilities. Ignore odds widgets on FootyStats/Goal/CBS (affiliate). Odds licensing still Xavi's call.",
+      "notes": "Shown once, separate Consensus view; never set or blend our probabilities. Ignore odds widgets on FootyStats/Goal/CBS (affiliate). Odds licensing still the owner's call.",
       "dropped": [],
       "deferredPaid": [
         "api-football"
@@ -500,7 +500,7 @@
       "historicalOnly": [
         "football-data"
       ],
-      "note": "Aggregation group (Xavi 2026-10-20): show EVERY live source's price side by side with timestamps, plus best price and our fair price. No primary/fallback. Add free sources as they're verified; a source that's stale or failing is omitted from the table, never guessed. Market never sets or blends our probabilities. Odds licensing still Xavi's call."
+      "note": "Aggregation group (owner 2026-10-20): show EVERY live source's price side by side with timestamps, plus best price and our fair price. No primary/fallback. Add free sources as they're verified; a source that's stale or failing is omitted from the table, never guessed. Market never sets or blends our probabilities. Odds licensing still the owner's call."
     },
     "historical_backtest": {
       "primary": "football-data",
@@ -696,7 +696,7 @@
         "api.elections.kalshi.com"
       ],
       "cost": "free",
-      "tos": "Public market data API. Odds licensing decision pending with Xavi.",
+      "tos": "Public market data API. Odds licensing decision pending with the owner.",
       "blocked": false
     },
     "polymarket": {
@@ -803,7 +803,7 @@
       ],
       "cost": "paid",
       "status": "deferred (paid)",
-      "tos": "Licensed. Needs Xavi's yes.",
+      "tos": "Licensed. Needs the owner's yes.",
       "blocked": false
     },
     "playerstats-football": {
@@ -813,7 +813,7 @@
       ],
       "cost": "paid",
       "status": "deferred (paid)",
-      "tos": "Needs Xavi's yes.",
+      "tos": "Needs the owner's yes.",
       "blocked": false
     },
     "statsperform": {
@@ -823,7 +823,7 @@
       ],
       "cost": "paid",
       "status": "deferred (paid)",
-      "tos": "Needs Xavi's yes.",
+      "tos": "Needs the owner's yes.",
       "blocked": false
     }
   }

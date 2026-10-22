@@ -184,7 +184,7 @@ export function buildMatchDossierForFixture(
       });
       const fixtureFirstProv: DossierProvenance = {
         sourceId: "fixture-first-source-groups",
-        label: "Fixture-first source groups (Xavi 2026-10-20)",
+        label: "Fixture-first source groups (owner 2026-10-20)",
         trustTier: "interim-spine",
         sourceRole: "interim",
         asOf: builtAt,
