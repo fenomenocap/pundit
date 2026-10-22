@@ -29,12 +29,12 @@ else
   EXPECTED_WEB_SHA="$(bash "$SCRIPT_DIR/resolve-deployed-sha.sh" web)"
 fi
 # Expected fixture-registry mode comes from PUNDIT_EXPECT_FIXTURE_REGISTRY
-# (e.g. a repo variable), default "shadow": the DO droplet deliberately runs
-# FIXTURE_REGISTRY_ENABLED=false until the registry data is restored (22 Oct
-# 2026). Allowed values: shadow, enabled. The legacy third positional argument
-# (the workflow still passes "enabled") no longer sets the mode; it is only
-# reported when it disagrees, so flipping prod back needs just the variable.
-EXPECTED_REGISTRY_MODE="${PUNDIT_EXPECT_FIXTURE_REGISTRY:-shadow}"
+# (e.g. a repo variable), default "enabled" (DO runs FIXTURE_REGISTRY_ENABLED=true
+# again after the 22 Oct 2026 data restore). Set it to "shadow" if the droplet
+# is deliberately run in shadow mode. Allowed values: shadow, enabled. The
+# legacy third positional argument (the workflow still passes "enabled") no
+# longer sets the mode; it is only reported when it disagrees.
+EXPECTED_REGISTRY_MODE="${PUNDIT_EXPECT_FIXTURE_REGISTRY:-enabled}"
 case "$EXPECTED_REGISTRY_MODE" in
   shadow|enabled) ;;
   *)
