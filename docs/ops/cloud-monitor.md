@@ -90,7 +90,9 @@ With no SHA arguments, `verify-prod.sh` resolves the latest commits that touched
 the API and web deployment watch sets independently. A documentation-only main
 commit is skipped by Railway/Vercel and must not create a false SHA alarm. For
 an authorized release, explicit expected SHAs remain supported:
-`bash scripts/verify-prod.sh <api-sha> <web-sha> enabled`.
+`bash scripts/verify-prod.sh <api-sha> <web-sha>`. The expected fixture-registry
+mode comes from `PUNDIT_EXPECT_FIXTURE_REGISTRY` (`shadow` by default, or
+`enabled`); a third positional argument is ignored.
 
 Use **Railway MCP** to fetch latest deploy/build logs for `@pundit/api` in production.
 
