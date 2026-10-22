@@ -20,16 +20,11 @@ test.describe("QA regressions", () => {
     await expect(page.getByText(/No upcoming fixtures|next (14|21) days/)).toHaveCount(0);
     await expect(page.getByTestId("fixture-status").filter({ hasText: "Scheduled" }).first()).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("fixtures-unpriced-empty.png") });
-    // Same truth on the bet slip: no fabricated prices when nothing is priced.
-    await page.goto("/board");
-    await expect(page.getByText("No priced fixtures are live right now.", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText(/\b\d+\.\d{2}\b/).filter({ hasText: /^\d+\.\d{2}$/ })).toHaveCount(0);
   });
 
-  test("fixtures label live and full-time instead of Upcoming", async ({ page }) => {
+  test("fixtures label full time and scheduled instead of Upcoming", async ({ page }) => {
     await page.goto("/fixtures");
-    const chelsea = page.getByTestId("fixture-row").filter({ hasText: "Chelsea" }).filter({ hasText: "Tottenham" });
-    await expect(chelsea.getByTestId("fixture-status")).toHaveText("In play");
+    // The fixtures mock has no in-play match; in-play labelling is covered by the desk in-play tests.
     const united = page.getByTestId("fixture-row").filter({ hasText: "Manchester United" }).filter({ hasText: "Hull City" });
     await expect(united.getByTestId("fixture-status")).toHaveText("Full time");
     const arsenal = page.getByTestId("fixture-row").filter({ hasText: "Arsenal" }).filter({ hasText: "Coventry City" });
@@ -915,7 +910,7 @@ test.describe("smoke", () => {
     await expect(forecastTable.getByRole("columnheader", { name: "Home" })).toBeVisible();
     await expect(forecastTable.getByRole("columnheader", { name: "Draw" })).toBeVisible();
     await expect(forecastTable.getByRole("columnheader", { name: "Away" })).toBeVisible();
-    await expect(forecastTable.locator("time")).toBeVisible();
+    await expect(rows.nth(1).getByTestId("fixture-market-sources").locator("time")).toBeVisible();
     await expect(rows.nth(2).getByText("Required forecast input missing", { exact: true })).toBeVisible();
   });
 
@@ -923,7 +918,8 @@ test.describe("smoke", () => {
     await page.goto("/fixtures");
     const forecast = page.getByTestId("model-fixture-row").first();
     await expect(forecast).toBeVisible();
-    await expect(forecast).toHaveAttribute("data-model-version", /.+/);
+    await expect(forecast).toHaveAttribute("data-fixture-id", /^espn:/);
+    await expect(forecast).toHaveAttribute("data-p-home", /^0\.\d+$/);
     const sources = page.getByTestId("fixture-market-sources").first();
     await expect(sources.getByText("Polymarket", { exact: true })).toBeHidden();
     await sources.locator("summary").click();

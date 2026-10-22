@@ -574,8 +574,9 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
   );
   progress.phase = "club-season-evaluation";
   await page.goto(`${webUrl}/evaluation/club-season`, { waitUntil: "domcontentloaded" });
-  const clubHeading = await page.getByRole("heading", { name: "Club season calibration" }).isVisible();
-  const clubRolling = await page.getByText("Rolling snapshots", { exact: true }).isVisible();
+  // The club-season page is now the "Track record" (rolling pre-kickoff snapshots, one per match).
+  const clubHeading = await page.getByRole("heading", { name: "Track record", exact: true }).isVisible();
+  const clubRolling = await page.getByText("Track record · club season", { exact: true }).isVisible();
   await page.getByText(/^Updated /).first().waitFor({ timeout: 15_000 }).catch(() => null);
   const clubUpdated = await page.getByText(/^Updated /).first().isVisible().catch(() => false);
   checks["evaluation-calibration-presentation"] = recordViewport(
