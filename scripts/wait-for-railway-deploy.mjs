@@ -7,6 +7,10 @@
  * the old ~4 minute startup poll budget — pundit-vp-35766143062 failed while
  * Railway was still deploying dab41c6 and reported success ~7.5 minutes after
  * push. This helper blocks only when the push required an API rebuild.
+ *
+ * It is a no-op (exit 0, "skipped: API host is not Railway") unless the API
+ * host (--api-url, else PUNDIT_API_URL, else the DigitalOcean default) is
+ * railway.app or a *.railway.app subdomain.
  */
 
 import { execFileSync } from "node:child_process";
@@ -18,10 +22,33 @@ const DEFAULT_MAIN_REF = "origin/main";
 const RAILWAY_INSTATUS_SUMMARY_URL = "https://railway.instatus.com/api/v2/summary.json";
 const RAILWAY_INSTATUS_COMPONENTS_URL = "https://railway.instatus.com/api/v2/components.json";
 const RAILWAY_INSTATUS_HISTORY_RSS_URL = "https://railway.instatus.com/history.rss";
+// Same source and default as scripts/verify-prod.sh: PUNDIT_API_URL, else the
+// DigitalOcean host the API moved to on 22 Oct 2026.
+const DEFAULT_API_URL = "https://134-209-121-101.sslip.io";
 
 function flag(argv, name) {
   const index = argv.indexOf(name);
   return index === -1 ? undefined : argv[index + 1];
+}
+
+/**
+ * Host of the production API: --api-url, else PUNDIT_API_URL, else the DO
+ * default. Lower-cased, without port or path.
+ */
+export function resolveApiHost(options = {}) {
+  const { apiUrl, env = process.env } = options;
+  const raw = String(apiUrl || env.PUNDIT_API_URL || DEFAULT_API_URL).trim();
+  try {
+    return new URL(raw.includes("://") ? raw : `https://${raw}`).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+/** True for railway.app and any *.railway.app host (e.g. *.up.railway.app). */
+export function isRailwayHost(host) {
+  const value = String(host ?? "").toLowerCase().replace(/\.$/, "");
+  return value === "railway.app" || value.endsWith(".railway.app");
 }
 
 function sleep(ms) {
@@ -366,8 +393,14 @@ export async function waitForRailwayDeploy(options = {}) {
 
 async function main(argv = process.argv.slice(2)) {
   if (flag(argv, "--help") !== undefined || argv[0] === "help") {
-    console.error("usage: wait-for-railway-deploy.mjs --sha <sha> [--context <name>] [--timeout-seconds <n>] [--interval-seconds <n>]");
+    console.error("usage: wait-for-railway-deploy.mjs --sha <sha> [--api-url <url>] [--context <name>] [--timeout-seconds <n>] [--interval-seconds <n>]");
     process.exit(2);
+  }
+
+  const apiHost = resolveApiHost({ apiUrl: flag(argv, "--api-url") });
+  if (!isRailwayHost(apiHost)) {
+    process.stdout.write(`skipped: API host is not Railway (${apiHost || "unparseable"})\n`);
+    process.exit(0);
   }
 
   const sha = flag(argv, "--sha");
