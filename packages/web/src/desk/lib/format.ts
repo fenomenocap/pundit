@@ -1,11 +1,11 @@
-import { KICKOFF_TIME_ZONE } from "../../lib/fixture-presentation";
+import { KICKOFF_TIME_ZONE, roundedPercent } from "../../lib/fixture-presentation";
 
 export function fmtOdds(n: number) {
   return n >= 10 ? n.toFixed(1) : n.toFixed(2);
 }
 
 export function fmtPct(n: number, digits = 0) {
-  return `${(n * 100).toFixed(digits)}%`;
+  return roundedPercent(n, digits);
 }
 
 export function fmtEdge(n: number) {

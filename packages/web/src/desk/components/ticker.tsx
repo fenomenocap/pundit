@@ -21,11 +21,11 @@ export function Ticker() {
           return (
             <div key={`${f.id}-${i}`} className="flex items-center gap-2 text-xs whitespace-nowrap">
               <KitPip team={f.home} size="sm" />
-              <span className="font-display uppercase tracking-wide">{TEAMS[f.home].short}</span>
+              <span className="font-display uppercase tracking-wide">{TEAMS[f.home].name}</span>
               <span className="font-display tabular-nums text-quiet">
                 {score ? `${score[0]}–${score[1]}` : "v"}
               </span>
-              <span className="font-display uppercase tracking-wide">{TEAMS[f.away].short}</span>
+              <span className="font-display uppercase tracking-wide">{TEAMS[f.away].name}</span>
               <KitPip team={f.away} size="sm" />
               <span className="font-display tabular-nums text-accent">{fmtPct(p)}</span>
             </div>

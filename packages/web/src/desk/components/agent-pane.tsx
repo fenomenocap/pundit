@@ -97,7 +97,7 @@ export function AgentPane() {
 
   const matchChips = liveFixture
     ? [
-        `How do ${TEAMS[liveFixture.home].short} win this?`,
+        `How do ${TEAMS[liveFixture.home].name} win this?`,
         "Tactical matchup",
         "Who decides it?",
         "Projected score",
@@ -199,7 +199,7 @@ export function AgentPane() {
           <div className="eyebrow text-accent">Pundit</div>
           <p className="text-sm text-quiet truncate">
             {liveFixture
-              ? `Pinned · ${TEAMS[liveFixture.home].short} vs ${TEAMS[liveFixture.away].short}`
+              ? `Pinned · ${TEAMS[liveFixture.home].name} vs ${TEAMS[liveFixture.away].name}`
               : source === "live"
                 ? "Slate · live"
                 : source === "no-fixtures"
@@ -264,12 +264,12 @@ export function AgentPane() {
                 >
                   <KitPip team={f.home} />
                   <span className="font-display text-lg uppercase tracking-wide leading-none">
-                    {TEAMS[f.home].short}
+                    {TEAMS[f.home].name}
                   </span>
                   <span className="text-subtle text-xs">vs</span>
                   <KitPip team={f.away} />
                   <span className="font-display text-lg uppercase tracking-wide leading-none">
-                    {TEAMS[f.away].short}
+                    {TEAMS[f.away].name}
                   </span>
                   <div className="ml-auto text-right shrink-0">
                     <span className="font-display text-lg tabular-nums text-accent">
@@ -317,9 +317,9 @@ export function AgentPane() {
           >
             <span className="text-2xs uppercase tracking-wide text-quiet">Line</span>
             {([
-              ["home", TEAMS[liveFixture.home].short],
+              ["home", TEAMS[liveFixture.home].name],
               ["draw", "Draw"],
-              ["away", TEAMS[liveFixture.away].short],
+              ["away", TEAMS[liveFixture.away].name],
             ] as const).map(([outcome, label]) => (
               <button
                 key={outcome}
@@ -432,7 +432,7 @@ export function AgentPane() {
           <div className="mt-2 flex items-center gap-2 text-2xs text-quiet">
             <FormDots team={liveFixture.home} size="sm" />
             <span>
-              {TEAMS[liveFixture.home].short} vs {TEAMS[liveFixture.away].short}
+              {TEAMS[liveFixture.home].name} vs {TEAMS[liveFixture.away].name}
             </span>
             <FormDots team={liveFixture.away} size="sm" />
           </div>
@@ -477,7 +477,7 @@ function Bubble({ msg }: { msg: ChatMsg }) {
         ) : null}
         {f ? (
           <span className="text-2xs text-subtle">
-            {TEAMS[f.home].short}–{TEAMS[f.away].short}
+            {TEAMS[f.home].name}–{TEAMS[f.away].name}
           </span>
         ) : null}
       </div>
