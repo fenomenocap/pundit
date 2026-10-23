@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ModelFixture } from "./model-data";
 import type { FootballMatch } from "./football-data";
-import { getResolvedActiveScoreModel } from "./active-score-model";
+import { replayCarriedScoreModel } from "./active-score-model";
 import { computeEvaluationMetrics, EvaluationFixture, EvaluationMetrics } from "./wc-evaluation";
 import {
   ELO_CHAMPION,
@@ -517,10 +517,11 @@ export function buildSnapshotFromModel(
     && provenance?.methodId !== "outcome-anchored-shrunk-goals-v2";
   if (fixture.goalCalibration && exact && provenance) {
     try {
-      const replay = getResolvedActiveScoreModel({ competitionId: fixture.competitionId,
+      const replay = replayCarriedScoreModel({ competitionId: fixture.competitionId,
         home: fixture.home, away: fixture.away, kickoff: fixture.utcDate,
         homeStrength: exact.homeStrength, awayStrength: exact.awayStrength,
-        homeAdvantageElo: exact.homeAdvantageElo }, new Date(forecastAt));
+        homeAdvantageElo: exact.homeAdvantageElo }, fixture.goalCalibration.artifactSha256,
+      { now: new Date(forecastAt), forecastAt: new Date(forecastAt) });
       const grid = fixture.scoreGrid;
       calibrationReplayComplete = replay.method === "calibrated"
         && exact.fixtureId === fixture.fixtureId && exact.competitionId === fixture.competitionId

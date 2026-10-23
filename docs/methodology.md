@@ -8,7 +8,7 @@ Status: current as of 23 October 2026 (origin/main, API and web). This page desc
 2. Team strength comes from **ClubElo** ratings, captured offline and pinned by content hash. The service never calls ClubElo at runtime.
 3. For the Premier League, the **shape** of the grid (how many goals, how they split, how often low scores occur) comes from a goal-rate model fitted to past Premier League results. The **1X2** comes from the Elo ratings. The goal-rate grid is rescaled so that its 1X2 equals the Elo 1X2 ("outcome anchoring").
 4. **Market prices are not a model input.** Exchange and bookmaker prices are fetched for comparison and display only.
-5. Two pinned inputs expire after 30 days and must be refreshed by hand: the EPL goal calibration (expires **2026-11-06 00:00 UTC, Fri 6 Nov 08:00 SGT**) and the ClubElo ratings pin (expires **2026-11-19 11:52 UTC, Thu 19 Nov 19:52 SGT**). A daily check alerts 7 days before each date (section 8).
+5. Two pinned inputs expire after 30 days and must be refreshed by hand: the EPL goal calibration (expires **2026-11-21 00:00 UTC, Sat 21 Nov 08:00 SGT**) and the ClubElo ratings pin (expires **2026-11-19 11:52 UTC, Thu 19 Nov 19:52 SGT**). A daily check alerts 7 days before each date (section 8).
 
 ## 2. Data sources
 
@@ -47,12 +47,12 @@ The code path is `packages/api/src/services/active-score-model.ts`.
 4. The home-win, draw and away-win probabilities of this grid are **the published 1X2**, for every competition.
 
 ### 3.3 Goal shape (Premier League only)
-For non-neutral Premier League fixtures with kickoff on or after 2026-10-07, the grid shape comes from the pinned goal calibration (`packages/api/data/model-artifacts/epl-goal-calibration/<sha256>.json`):
+For non-neutral Premier League fixtures with kickoff on or after 2026-10-22 (the activation origin of the current pin; 7–21 Oct fixtures used the retired pin `a502e436…`), the grid shape comes from the pinned goal calibration (`packages/api/data/model-artifacts/epl-goal-calibration/<sha256>.json`):
 - Total expected goals = `exp(intercept + effect_home + effect_away)`, with team effects shrunk toward zero.
 - Home share = `sigmoid(slope · ln10 · (Elo_home − Elo_away)/400 + homeOffset)`.
 - A Dixon–Coles grid is built from these two rates with the fitted ρ.
 
-Pinned coefficients (artifact `a502e436…`): intercept 1.030, slope 0.623, home offset 0.212, ρ −0.11, 180-day half-life weighting, team precision 100, 3,090 results through 2026-09-20.
+Pinned coefficients (artifact `02d8bbcd…`, origin 2026-10-22): intercept 1.040, slope 0.532, home offset 0.237, ρ −0.06, 180-day half-life weighting, team precision 100, 3,110 results through 2026-10-19 (1,101 with a pre-kickoff rating). The retired pin `a502e436…` was intercept 1.030, slope 0.623, home offset 0.212, ρ −0.11 (3,090 results through 2026-09-20).
 
 If the calibration is missing, invalid or expired, Premier League rows **fail closed**: they are not published. There is no silent fallback.
 
@@ -85,10 +85,10 @@ The web client re-derives each published market from the grid and refuses to dis
 
 ## 5. Calibration
 
-### 5.1 Current production pin (7 Oct 2026)
-- Artifact `a502e436…`, method `outcome-anchored-shrunk-goals-v2`, origin 2026-10-07T00:00Z.
-- Training: ESPN Premier League results 2018-19 to 2026-27 (3,090 matches through 2026-09-20), 996 of them with a ClubElo rating dated before kickoff.
-- Its original review files lived under `artifacts/historical-calibration-2026-10-07/`, which is **not in git**. That gap is closed for the re-fit below.
+### 5.1 Production pins
+**Current: `02d8bbcd…` (22 Oct 2026).** Method `outcome-anchored-shrunk-goals-v2`, origin 2026-10-22T00:00Z, expires 2026-11-21T00:00Z. It is a refit of every Premier League result from 2018/19 through 24 hours before the origin (3,110 results, 1,101 with a ClubElo rating dated before kickoff), decay 180, team precision 100. It is built by `scripts/build-epl-goal-calibration-2026-10-22.ts`; the receipt is `model/epl-pin-2026-10-22/pin-receipt.json`, and the artifact lists the SHA-256 of every source, training and evaluation file it cites. The training inputs and walk-forward evidence it cites are not on `main`; they are preserved on the branch `cursor/epl-forecast-repin-ab82`. The 1X2 temperature flag is not part of the pin and stays OFF. Changing the pin moves no published 1X2 (the grid is anchored to the Elo 1X2); it changes totals, BTTS, expected goals and scorelines.
+
+**Retired: `a502e436…` (7 Oct 2026).** Method `outcome-anchored-shrunk-goals-v2`, origin 2026-10-07T00:00Z, 3,090 matches through 2026-09-20, 996 of them with a ClubElo rating dated before kickoff. It is kept in `EPL_GOAL_CALIBRATION_PINS`, so the 7–21 Oct forecasts built under it still replay and score. Its original review files lived under `artifacts/historical-calibration-2026-10-07/`, which is **not in git**.
 
 ### 5.2 Re-fit, 22 Oct 2026 (evidence in git; not yet pinned)
 All inputs, code and outputs are committed under `model/calibration-2026-10-22/`:
@@ -176,9 +176,9 @@ Reliability tables for home win, draw, away win, over 2.5 and BTTS are in `repor
 
 | Pin | Issued | Hard expiry | Alert from |
 |---|---|---|---|
-| EPL goal calibration `a502e436…` | 2026-10-07 00:00 UTC | **2026-11-06 00:00 UTC (Fri 6 Nov 08:00 SGT)** | 2026-10-30 00:00 UTC (Fri 30 Oct 08:00 SGT) |
+| EPL goal calibration `02d8bbcd…` | 2026-10-22 00:00 UTC | **2026-11-21 00:00 UTC (Sat 21 Nov 08:00 SGT)** | 2026-11-14 00:00 UTC (Sat 14 Nov 08:00 SGT) |
 | ClubElo pin `13d23cc4…` | 2026-10-20 11:52 UTC | **2026-11-19 11:52 UTC (Thu 19 Nov 19:52 SGT)** | 2026-11-12 11:52 UTC |
 
 - `pnpm --filter @sports-predict/api check:model-expiry` exits non-zero from 7 days before either expiry. It runs daily in `.github/workflows/model-pin-expiry.yml` (00:00 UTC, 08:00 SGT; offline, no secrets, never deploys) and also inside the weekly `clubelo-freshness.yml` job (Mondays 08:00 UTC), which additionally flags a ClubElo pin older than 7 days. A failing run is the alert: GitHub notifies the repository owner. (`docs/ops/pending-workflows/model-pin-expiry.yml` is the pre-install copy and is superseded by the installed workflow.)
-- To re-pin the calibration: review `model/calibration-2026-10-22/report.json`, write the candidate fit as a schema-v1 artifact under `packages/api/data/model-artifacts/epl-goal-calibration/<sha256>.json`, update `EPL_GOAL_CALIBRATION_ARTIFACT_SHA256` and `EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN`, run the API tests, and deploy. This changes live forecasts and needs sign-off.
+- To re-pin the calibration: review `model/calibration-2026-10-22/report.json`, write the candidate fit as a schema-v1 artifact under `packages/api/data/model-artifacts/epl-goal-calibration/<sha256>.json`, update `EPL_GOAL_CALIBRATION_ARTIFACT_SHA256` and `EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN`, keep the previous pin in `EPL_GOAL_CALIBRATION_PINS` so its stored rows still replay, run the API tests, and deploy. This changes live forecasts and needs sign-off.
 - To refresh ClubElo: `packages/api/scripts/refresh-clubelo-snapshot.ts` (capture, build, verify), then deploy.

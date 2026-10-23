@@ -14,14 +14,14 @@ const villaBrentfordGolden = {
     home: "Aston Villa",
     away: "Brentford",
     competitionId: "eng.1",
-    kickoff: "2026-10-10T14:00Z",
+    kickoff: "2026-10-25T14:00Z",
     homeAdvantageElo: 42,
     homeStrength: 1894.7287510348706,
     awayStrength: 1861.9340912388507,
   },
-  pBtts: 0.5744848359145648,
-  expectedHomeGoals: 1.701863823974528,
-  expectedAwayGoals: 1.145340183185047,
+  pBtts: 0.5739513575595379,
+  expectedHomeGoals: 1.704390779201309,
+  expectedAwayGoals: 1.146372902973552,
 };
 
 function calibratedRow(): ModelFixture {
@@ -51,7 +51,7 @@ function calibratedRow(): ModelFixture {
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(new Date("2026-10-07T00:00:00Z"));
+  vi.setSystemTime(new Date("2026-10-22T00:00:00Z"));
 });
 afterEach(() => vi.useRealTimers());
 
@@ -79,7 +79,7 @@ describe("take goal copy matches calibrated row", () => {
     expect(plan.gridCall?.modelPctInt).toBe(Math.round(grounding.pBttsYes * 100));
 
     const prose = renderTakeProseDeterministic(plan);
-    expect(prose).toMatch(/BTTS yes at 57\.5%/);
+    expect(prose).toMatch(/BTTS yes at 57\.4%/);
     expect(prose).toMatch(/I expect (about|close to|around)/i);
     expect(prose).not.toMatch(/1\.85|0\.85|score grid/i);
   });

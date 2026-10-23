@@ -8,7 +8,7 @@ import { assertValidatedEplGoalCalibrationArtifact, EPL_GOAL_CALIBRATION_ACTIVAT
   validateEplGoalCalibrationArtifact, type EplGoalCalibrationArtifact,
   type ValidatedEplGoalCalibrationArtifact } from "./epl-goal-calibration-artifact";
 
-const now = new Date("2026-10-08T00:00:00Z");
+const now = new Date("2026-10-23T00:00:00Z");
 function artifact(): EplGoalCalibrationArtifact {
   const ref = { path: "reviewed/evidence.json", sha256: "a".repeat(64) };
   return { schemaVersion: 1, methodId: EPL_GOAL_CALIBRATION_METHOD_ID, competitionId: "eng.1",
@@ -16,7 +16,7 @@ function artifact(): EplGoalCalibrationArtifact {
       options: { decayDays: 180, teamPrecision: 100 }, intercept: Math.log(3.1),
       teamEffects: { Arsenal: 0.02, Leeds: -0.03, "Man United": 0.04 }, allocationSlope: 1.1,
       homeOffset: 0.25, rho: -0.1, trainingCount: 120, allocationTrainingCount: 40,
-      trainingThrough: "2026-10-06T00:00:00Z", trainingSha256: "b".repeat(64), converged: true, gradientNorm: 1e-8 },
+      trainingThrough: "2026-10-21T00:00:00Z", trainingSha256: "b".repeat(64), converged: true, gradientNorm: 1e-8 },
     review: { experimentId: "outcome-anchored-goal-rates-v2", source: [ref], training: [ref], evaluation: [ref] } };
 }
 function bytes(value: EplGoalCalibrationArtifact | string) {
@@ -63,18 +63,18 @@ describe("reviewed EPL goal calibration artifact", () => {
 
   it("checks future and 30-day freshness on validation and every subsequent use", () => {
     const validated = validate();
-    expect(() => validate(artifact(), new Date("2026-10-06T23:59:59Z"))).toThrow(/future/);
-    expect(() => validate(artifact(), new Date("2026-11-06T00:00:00Z"))).not.toThrow();
-    expect(() => validate(artifact(), new Date("2026-11-06T00:00:00.001Z"))).toThrow(/30 days/);
-    expect(() => assertValidatedEplGoalCalibrationArtifact(validated, new Date("2026-11-06T00:00:00.001Z"))).toThrow(/30 days/);
+    expect(() => validate(artifact(), new Date("2026-10-21T23:59:59Z"))).toThrow(/future/);
+    expect(() => validate(artifact(), new Date("2026-11-21T00:00:00Z"))).not.toThrow();
+    expect(() => validate(artifact(), new Date("2026-11-21T00:00:00.001Z"))).toThrow(/30 days/);
+    expect(() => assertValidatedEplGoalCalibrationArtifact(validated, new Date("2026-11-21T00:00:00.001Z"))).toThrow(/30 days/);
     expect(() => validate(artifact(), new Date(NaN))).toThrow(/future/);
   });
 
   it("accepts explicit UTC minute precision for origin and historical training through", () => {
     const value = artifact();
-    value.fit.origin = "2026-10-07T00:00Z";
+    value.fit.origin = "2026-10-22T00:00Z";
     value.fit.trainingThrough = "2026-09-20T15:30Z";
-    expect(validate(value).origin).toBe("2026-10-07T00:00Z");
+    expect(validate(value).origin).toBe("2026-10-22T00:00Z");
   });
 
   it.each([
@@ -83,9 +83,9 @@ describe("reviewed EPL goal calibration artifact", () => {
     (a: EplGoalCalibrationArtifact) => { a.competitionId = "uefa.champions_qual" as "eng.1"; },
     (a: EplGoalCalibrationArtifact) => { a.fit.methodId = "other" as typeof a.fit.methodId; },
     (a: EplGoalCalibrationArtifact) => { a.fit.origin = "2026-02-30T00:00:00Z"; },
-    (a: EplGoalCalibrationArtifact) => { a.fit.origin = "2026-10-07T24:00:00Z"; },
-    (a: EplGoalCalibrationArtifact) => { a.fit.origin = "2026-10-08T00:00:00Z"; },
-    (a: EplGoalCalibrationArtifact) => { a.fit.origin = "2026-10-07"; },
+    (a: EplGoalCalibrationArtifact) => { a.fit.origin = "2026-10-22T24:00:00Z"; },
+    (a: EplGoalCalibrationArtifact) => { a.fit.origin = "2026-10-23T00:00:00Z"; },
+    (a: EplGoalCalibrationArtifact) => { a.fit.origin = "2026-10-22"; },
     (a: EplGoalCalibrationArtifact) => { a.fit.converged = false; },
     (a: EplGoalCalibrationArtifact) => { a.fit.gradientNorm = -1; },
     (a: EplGoalCalibrationArtifact) => { a.fit.gradientNorm = 1e-6; },
@@ -110,7 +110,7 @@ describe("reviewed EPL goal calibration artifact", () => {
     (a: EplGoalCalibrationArtifact) => { a.fit.trainingCount = 120.5; },
     (a: EplGoalCalibrationArtifact) => { a.fit.allocationTrainingCount = 29; },
     (a: EplGoalCalibrationArtifact) => { a.fit.allocationTrainingCount = 121; },
-    (a: EplGoalCalibrationArtifact) => { a.fit.trainingThrough = "2026-10-06T00:00:00.001Z"; },
+    (a: EplGoalCalibrationArtifact) => { a.fit.trainingThrough = "2026-10-21T00:00:00.001Z"; },
     (a: EplGoalCalibrationArtifact) => { a.fit.trainingThrough = "2026-09-31T00:00:00Z"; },
     (a: EplGoalCalibrationArtifact) => { a.fit.trainingThrough = "2026-02-30T15:30Z"; },
     (a: EplGoalCalibrationArtifact) => { a.fit.trainingThrough = "2026-09-20T15:30:60Z"; },
@@ -144,7 +144,7 @@ describe("reviewed EPL goal calibration artifact", () => {
       rmSync(filePath);
       expect(loadEplGoalCalibrationArtifact(options).artifactSha256).toBe(sha);
       expect(getEplGoalCalibrationReadiness(options).ready).toBe(true);
-      const expired = getEplGoalCalibrationReadiness({ ...options, now: new Date("2026-11-07T00:00:00Z") });
+      const expired = getEplGoalCalibrationReadiness({ ...options, now: new Date("2026-11-22T00:00:00Z") });
       expect(expired.ready).toBe(false); expect(expired.error).toMatch(/30 days/);
       const missing = getEplGoalCalibrationReadiness({ ...options, filePath: path.join(folder, "missing.json") });
       expect(missing.ready).toBe(false); expect(missing.error).toMatch(/unavailable/);
