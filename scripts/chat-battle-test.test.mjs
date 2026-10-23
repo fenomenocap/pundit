@@ -3535,6 +3535,62 @@ test("schema-17 table-source fidelity refuses tied-table rankings without leakin
   ).assertions.tableSourceFidelity, false);
 });
 
+test("club-name checks accept the API's full display names and short canonical names alike", () => {
+  const seasonGrounding = {
+    kind: "season",
+    standings: [
+      { position: 1, team: "Man City", playedGames: 7, points: 21, goalDifference: 12 },
+      { position: 2, team: "Arsenal", playedGames: 7, points: 18, goalDifference: 6 },
+    ],
+    seasonOutlook: {
+      titleProbabilities: [
+        { team: "Man City", probability: 0.5018 },
+        { team: "Arsenal", probability: 0.4925 },
+      ],
+    },
+  };
+  // Chat prints full club names; grounding keeps the short canonical key.
+  assert.equal(validateResponseCorrectness(
+    "**Title race**\n1. **Manchester City 50.2%**\n2. **Arsenal 49.3%**",
+    [], seasonGrounding, { expectSeasonRanking: true }
+  ).assertions.seasonRankingAnswered, true);
+  assert.equal(validateResponseCorrectness(
+    "Man City lead at 50.2%, followed by Arsenal at 49.3%.",
+    [], seasonGrounding, { expectSeasonRanking: true }
+  ).assertions.seasonRankingAnswered, true);
+  // Still the same assertion: the stated number must match, and both leaders must appear.
+  assert.equal(validateResponseCorrectness(
+    "Manchester City lead at 61.0%, followed by Arsenal at 49.3%.",
+    [], seasonGrounding, { expectSeasonRanking: true }
+  ).assertions.seasonRankingAnswered, false);
+  assert.equal(validateResponseCorrectness(
+    "Manchester City lead at 50.2%.",
+    [], seasonGrounding, { expectSeasonRanking: true }
+  ).assertions.seasonRankingAnswered, false);
+  assert.equal(validateResponseCorrectness(
+    "Manchester United lead at 50.2%, followed by Arsenal at 49.3%.",
+    [], seasonGrounding, { expectSeasonRanking: true }
+  ).assertions.seasonRankingAnswered, false);
+
+  assert.equal(validateResponseCorrectness(
+    "Manchester City top the supplied table on 21 points after seven matches; no title probability is inferred from it.",
+    [], seasonGrounding, { expectTableSourceFidelity: true }
+  ).assertions.tableSourceFidelity, true);
+  assert.equal(validateResponseCorrectness(
+    "Man City top the supplied table on 21 points after seven matches.",
+    [], seasonGrounding, { expectTableSourceFidelity: true }
+  ).assertions.tableSourceFidelity, true);
+  // A different club at the top, or season probabilities, still fail the check.
+  assert.equal(validateResponseCorrectness(
+    "Arsenal top the supplied table.",
+    [], seasonGrounding, { expectTableSourceFidelity: true }
+  ).assertions.tableSourceFidelity, false);
+  assert.equal(validateResponseCorrectness(
+    "Manchester City lead the title race at 50.2%.",
+    [], seasonGrounding, { expectTableSourceFidelity: true }
+  ).assertions.tableSourceFidelity, false);
+});
+
 test("schema-17 rejects abstained probability counterfactuals, false product scope and history denial", () => {
   assert.equal(validateAbstainedCounterfactualDiscipline(
     "No verified team news was established. If an attacker is rotated, the model's home-win edge shrinks and the draw moves toward 12%.",
