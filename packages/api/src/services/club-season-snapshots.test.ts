@@ -271,13 +271,13 @@ describe("club-season snapshots", () => {
   });
 
   function calibratedFixture(): ModelFixture {
-    const utcDate = "2026-10-10T11:30:00.000Z";
-    const forecastAt = "2026-10-08T00:00:00.000Z";
+    const utcDate = "2026-10-25T11:30:00.000Z";
+    const forecastAt = "2026-10-23T00:00:00.000Z";
     const homeStrength = 2040.320763777506, awayStrength = 1816.5033321509707;
     const model = getResolvedActiveScoreModel({ competitionId: "eng.1", home: "Arsenal", away: "Leeds",
       kickoff: utcDate, homeStrength, awayStrength, homeAdvantageElo: 42 }, new Date(forecastAt));
     const ratingSha = "a".repeat(64), ratingId = `clubelo@1:${ratingSha}`;
-    const fixture = sampleModelFixture({ utcDate, date: "2026-10-10", away: "Leeds",
+    const fixture = sampleModelFixture({ utcDate, date: "2026-10-25", away: "Leeds",
       homeElo: Math.round(homeStrength * 10) / 10, awayElo: Math.round(awayStrength * 10) / 10,
       goalCalibration: { methodId: model.methodId, artifactId: model.artifactId!, artifactSha256: model.artifactSha256! },
       scoreGrid: model.matrix, expectedHomeGoals: model.expectedHomeGoals, expectedAwayGoals: model.expectedAwayGoals,
@@ -297,7 +297,7 @@ describe("club-season snapshots", () => {
 
   it("carries exact calibrated inputs, immutable grid and final means across persistence for replay", () => {
     const fixture = calibratedFixture();
-    const seal = buildSnapshotFromModel(fixture, "2026-10-10T10:30:00.000Z");
+    const seal = buildSnapshotFromModel(fixture, "2026-10-25T10:30:00.000Z");
     expect(seal.provenanceCompleteness).toBe("complete");
     expect(seal.inputs.homeRating).toBe(2040.320763777506);
     expect(seal.inputs.homeRating).not.toBe(seal.homeElo);
@@ -321,9 +321,9 @@ describe("club-season snapshots", () => {
   it("preserves a prior seal's bytes when a later calibrated revision arrives", () => {
     const before = buildSnapshotFromModel(sampleModelFixture(), "2026-08-15T13:59:00.000Z");
     const original = JSON.stringify(before);
-    const after = buildSnapshotFromModel(calibratedFixture(), "2026-10-10T10:30:00.000Z");
+    const after = buildSnapshotFromModel(calibratedFixture(), "2026-10-25T10:30:00.000Z");
     const merged = mergeSnapshots({ ...migrateClubSeasonEvaluationArtifact(null), fixtures: [before] },
-      [calibratedFixture()], new Set(["eng.1:101"]), "2026-10-10T10:30:00.000Z");
+      [calibratedFixture()], new Set(["eng.1:101"]), "2026-10-25T10:30:00.000Z");
     expect(merged.fixtures).toHaveLength(2);
     expect(JSON.stringify(merged.fixtures.find((r) => r.forecastId === before.forecastId))).toBe(original);
     expect(merged.fixtures.find((r) => r.forecastId === after.forecastId)?.scoreGrid).toEqual(after.scoreGrid);
@@ -337,7 +337,7 @@ describe("club-season snapshots", () => {
       { ...good, forecastInputs: { ...good.forecastInputs!, goalCalibrationArtifactSha256: "b".repeat(64) } },
       { ...good, forecastProvenance: { ...good.forecastProvenance!, contributorVersion: "b".repeat(64) } },
     ]) {
-      const seal = buildSnapshotFromModel(bad, "2026-10-10T10:30:00.000Z");
+      const seal = buildSnapshotFromModel(bad, "2026-10-25T10:30:00.000Z");
       expect(seal.pOver2_5).toBe(good.pOver2_5);
       expect(seal.provenanceCompleteness).toBe("source_partial");
       seal.result = { homeScore: 2, awayScore: 0, winner: "home" };

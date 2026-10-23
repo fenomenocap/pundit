@@ -8,7 +8,8 @@ import { buildPunditConsensus } from "./pundit-consensus";
 import { EPL_GOAL_CALIBRATION_ARTIFACT_SHA256 } from "./epl-goal-calibration-artifact";
 import type { ActiveFixture } from "./active-fixtures";
 
-// Independent golden calculations from the pinned artifact and captured fixtures.
+// Golden calculations from the pinned artifact (02d8bbcd, re-pin of 22 Oct 2026) and captured fixtures.
+// 1X2 is unchanged by a re-pin (the grid is anchored to the Elo 1X2); totals, BTTS and means move.
 const goldens = [
   {
     "input": {
@@ -16,7 +17,7 @@ const goldens = [
       "home": "Arsenal",
       "away": "Leeds",
       "competitionId": "eng.1",
-      "kickoff": "2026-10-10T11:30Z",
+      "kickoff": "2026-10-25T11:30Z",
       "homeAdvantageElo": 42,
       "homeStrength": 2040.320763777506,
       "awayStrength": 1816.5033321509707
@@ -24,10 +25,10 @@ const goldens = [
     "pHome": 0.7668270808067384,
     "pDraw": 0.17475109617005988,
     "pAway": 0.05842182302320201,
-    "pOver": 0.515994926954298,
-    "pBtts": 0.41902162354219263,
-    "expectedHomeGoals": 2.134320669766317,
-    "expectedAwayGoals": 0.5897471707547812
+    "pOver": 0.5137146943157006,
+    "pBtts": 0.4283691576287586,
+    "expectedHomeGoals": 2.109162459679025,
+    "expectedAwayGoals": 0.6062053237085439
   },
   {
     "input": {
@@ -35,7 +36,7 @@ const goldens = [
       "home": "Aston Villa",
       "away": "Brentford",
       "competitionId": "eng.1",
-      "kickoff": "2026-10-10T14:00Z",
+      "kickoff": "2026-10-25T14:00Z",
       "homeAdvantageElo": 42,
       "homeStrength": 1894.7287510348706,
       "awayStrength": 1861.9340912388507
@@ -43,10 +44,10 @@ const goldens = [
     "pHome": 0.49539048432530763,
     "pDraw": 0.26947316117021225,
     "pAway": 0.23513635450448028,
-    "pOver": 0.5411513086718236,
-    "pBtts": 0.5744848359145648,
-    "expectedHomeGoals": 1.701863823974528,
-    "expectedAwayGoals": 1.145340183185047
+    "pOver": 0.5402084616918227,
+    "pBtts": 0.5739513575595379,
+    "expectedHomeGoals": 1.704390779201309,
+    "expectedAwayGoals": 1.146372902973552
   },
   {
     "input": {
@@ -54,7 +55,7 @@ const goldens = [
       "home": "Chelsea",
       "away": "Bournemouth",
       "competitionId": "eng.1",
-      "kickoff": "2026-10-10T14:00Z",
+      "kickoff": "2026-10-25T14:00Z",
       "homeAdvantageElo": 42,
       "homeStrength": 1881.0555865862013,
       "awayStrength": 1860.6221017944276
@@ -62,10 +63,10 @@ const goldens = [
     "pHome": 0.47288763036489045,
     "pDraw": 0.2733507800458428,
     "pAway": 0.2537615895892668,
-    "pOver": 0.5628587931714776,
-    "pBtts": 0.5987786937066211,
-    "expectedHomeGoals": 1.7124522917240073,
-    "expectedAwayGoals": 1.2333173290176251
+    "pOver": 0.5756406644731848,
+    "pBtts": 0.6100440444565502,
+    "expectedHomeGoals": 1.7509294475286648,
+    "expectedAwayGoals": 1.2622969036888803
   }
 ];
 const rounded = (value: number) => Math.round(value * 10_000) / 10_000;
@@ -75,7 +76,7 @@ function row(index = 0): ModelFixture {
   const ratings = { world: new Map<string, number>(), "eng-clubs": new Map([[input.home, input.homeStrength], [input.away, input.awayStrength]]), "uefa-clubs": new Map<string, number>() };
   return buildModelFixtureFromActive(active, ratings)!;
 }
-beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-07T00:00:00Z")); });
+beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-22T00:00:00Z")); });
 afterEach(() => vi.useRealTimers());
 
 describe("calibrated EPL delivery", () => {
@@ -103,10 +104,10 @@ describe("calibrated EPL delivery", () => {
     expect(answer).not.toContain("fixed total-goals assumption");
   });
   it("retains neutral and UCL coverage when the EPL artifact expires", () => {
-    const fixture: ActiveFixture = { id: 1, competitionId: "eng.1", competition: "Premier League", homeTeam: "Arsenal", awayTeam: "Leeds", utcDate: "2026-11-10T12:00:00Z", status: "SCHEDULED", neutralVenue: false, stage: null, matchday: null, group: null, score: null, featured: false };
+    const fixture: ActiveFixture = { id: 1, competitionId: "eng.1", competition: "Premier League", homeTeam: "Arsenal", awayTeam: "Leeds", utcDate: "2026-11-25T12:00:00Z", status: "SCHEDULED", neutralVenue: false, stage: null, matchday: null, group: null, score: null, featured: false };
     const profile = new Map([["Arsenal", 2040.3], ["Leeds", 1816.5]]);
     const ratings = { world: new Map<string, number>(), "eng-clubs": profile, "uefa-clubs": profile };
-    const rows = buildActiveModelFixtures([fixture, { ...fixture, id: 2, neutralVenue: true }, { ...fixture, id: 3, competitionId: "uefa.champions_qual" }], ratings, { forecastAt: new Date("2026-11-08T00:00:00Z") });
+    const rows = buildActiveModelFixtures([fixture, { ...fixture, id: 2, neutralVenue: true }, { ...fixture, id: 3, competitionId: "uefa.champions_qual" }], ratings, { forecastAt: new Date("2026-11-23T00:00:00Z") });
     expect(rows.map(row => row.fixtureId)).toEqual([2, 3]);
     expect(rows.every(row => !row.goalCalibration)).toBe(true);
   });
@@ -125,7 +126,7 @@ describe("calibrated EPL delivery", () => {
   });
   it("uses one coherent calibrated grid for the labelled market blend", () => {
     const fixture = row();
-    const consensus = buildPunditConsensus({ fundamental: fixture, fundamentalGrid: fixture.scoreGrid, market: { source: "kalshi", observedAt: "2026-10-07T00:00:00Z", pHome: 0.6, pDraw: 0.25, pAway: 0.15 } })!;
+    const consensus = buildPunditConsensus({ fundamental: fixture, fundamentalGrid: fixture.scoreGrid, market: { source: "kalshi", observedAt: "2026-10-22T00:00:00Z", pHome: 0.6, pDraw: 0.25, pAway: 0.15 } })!;
     expect(consensus.methodId).toBe("labelled-1x2-shrink-outcome-anchor");
     expect(consensus.totalXg).not.toBe(2.7);
     const grid = fixture.scoreGrid!;

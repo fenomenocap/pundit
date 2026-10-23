@@ -1,0 +1,14 @@
+{
+ "pin": "02d8bbcde52e5a15aec10d4383b40b6c9652036f53d77b15a725500d85ac04e6",
+ "origin": "2026-10-22T00:00:00.000Z",
+ "expires": "2026-11-21T00:00:00.000Z",
+ "replaces": { "sha256": "a502e436d89d84e73647602117060a1ee2c824435ebd05a3ad6f93b859f627c7", "activationOrigin": "2026-10-07T00:00:00.000Z", "retainedIn": "EPL_GOAL_CALIBRATION_PINS" },
+ "config": { "training": "every EPL result 2018/19 onward with kickoff at or before origin minus 24h", "decayDays": 180, "teamPrecision": 100, "source": "#404 recommendation" },
+ "temperature": "ONE_X_TWO_TEMPERATURE_ENABLED is not part of this pin and stays OFF",
+ "dataFreshness": {
+  "checkedAt": "2026-10-22T16:27:23Z",
+  "footballDataE0_2627": { "url": "https://www.football-data.co.uk/mmz4281/2627/E0.csv", "sha256": "705ef4373f6c4c9ec09b67eb3ca3398d6a770813095efc5d629edb591e4ee41c", "identicalToCommitted": "model/epl-repin-2026-11-06/raw/E0-2627.csv", "lastResult": "2026-10-19 Tottenham 3-1 Coventry" },
+  "ratings": "No EPL match was played after 2026-10-19, so no new pre-kickoff rating can enter the allocation fit; the committed ClubElo mirror and pins are unchanged."
+ },
+ "build": "packages/api/node_modules/.bin/tsx scripts/build-epl-goal-calibration-2026-10-22.ts (deterministic; reproduces model/epl-repin-2026-11-06/recommended-fit.json exactly)"
+}

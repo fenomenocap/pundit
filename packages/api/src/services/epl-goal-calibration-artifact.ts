@@ -6,10 +6,23 @@ import { matrixTo1x2, scoreMatrix } from "./dixon-coles";
 import { GOAL_CALIBRATION_CANDIDATES, historicalGoalLambdas, type HistoricalGoalFit } from "./historical-goal-calibration";
 
 export const EPL_GOAL_CALIBRATION_METHOD_ID = "outcome-anchored-shrunk-goals-v2";
-export const EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN = "2026-10-07T00:00:00.000Z";
+export const EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN = "2026-10-22T00:00:00.000Z";
 // Registration is separate from activation; the release owner pins reviewed bytes.
-export const EPL_GOAL_CALIBRATION_ARTIFACT_SHA256 = "a502e436d89d84e73647602117060a1ee2c824435ebd05a3ad6f93b859f627c7";
+export const EPL_GOAL_CALIBRATION_ARTIFACT_SHA256 = "02d8bbcde52e5a15aec10d4383b40b6c9652036f53d77b15a725500d85ac04e6";
 export const EPL_GOAL_CALIBRATION_MAX_AGE_MS = 30 * 86_400_000;
+
+export interface EplGoalCalibrationPin { readonly sha256: string; readonly activationOrigin: string }
+/**
+ * Every reviewed pin, current first. A re-pin appends the previous pin here
+ * instead of deleting it, so forecasts that pin produced (cached rows, stored
+ * ledger rows) still replay against the bytes they were built from, with
+ * freshness judged at their own forecast time.
+ */
+export const EPL_GOAL_CALIBRATION_PINS: readonly EplGoalCalibrationPin[] = Object.freeze([
+  Object.freeze({ sha256: EPL_GOAL_CALIBRATION_ARTIFACT_SHA256, activationOrigin: EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN }),
+  // Retired 22 Oct 2026 (re-pin, model/epl-pin-2026-10-22/pin-receipt.json); kept so its stored rows replay.
+  Object.freeze({ sha256: "a502e436d89d84e73647602117060a1ee2c824435ebd05a3ad6f93b859f627c7", activationOrigin: "2026-10-07T00:00:00.000Z" }),
+]);
 const SHA256 = /^[a-f0-9]{64}$/;
 
 export interface GoalCalibrationEvidenceRef { path: string; sha256: string }
@@ -81,7 +94,8 @@ function evidenceRefs(value: unknown): boolean {
 }
 
 export function validateEplGoalCalibrationArtifact(
-  raw: string | Buffer, expectedSha256: string, now = new Date()
+  raw: string | Buffer, expectedSha256: string, now = new Date(),
+  activationOrigin: string = EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN
 ): ValidatedEplGoalCalibrationArtifact {
   if (!SHA256.test(expectedSha256)) throw new EplGoalCalibrationArtifactError("Invalid pinned calibration SHA-256");
   const artifactSha256 = createHash("sha256").update(raw).digest("hex");
@@ -94,7 +108,7 @@ export function validateEplGoalCalibrationArtifact(
   }
   const fit = parsed.fit;
   const origin = goalCalibrationUtcInstant(fit.origin);
-  if (origin !== Date.parse(EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN)) {
+  if (origin !== Date.parse(activationOrigin)) {
     throw new EplGoalCalibrationArtifactError("Calibration origin does not match reviewed activation");
   }
   const ageDays = checkFreshness(fit.origin as string, now);
@@ -159,14 +173,14 @@ export function assertValidatedEplGoalCalibrationArtifact(
   }
   checkFreshness(artifact.origin, now);
 }
-export interface EplGoalCalibrationLoadOptions { filePath?: string; expectedSha256?: string; now?: Date }
+export interface EplGoalCalibrationLoadOptions { filePath?: string; expectedSha256?: string; now?: Date; activationOrigin?: string }
 export function loadEplGoalCalibrationArtifact(options: EplGoalCalibrationLoadOptions = {}): ValidatedEplGoalCalibrationArtifact {
   const expectedSha256 = options.expectedSha256 ?? EPL_GOAL_CALIBRATION_ARTIFACT_SHA256;
   const filePath = options.filePath ?? path.resolve(__dirname, "../../data/model-artifacts/epl-goal-calibration", `${expectedSha256}.json`);
   const key = `${filePath}:${expectedSha256}`;
   try {
     const raw = cachedFiles.get(key) ?? readFileSync(filePath);
-    const validated = validateEplGoalCalibrationArtifact(raw, expectedSha256, options.now);
+    const validated = validateEplGoalCalibrationArtifact(raw, expectedSha256, options.now, options.activationOrigin);
     cachedFiles.set(key, raw);
     return validated;
   } catch (error) {

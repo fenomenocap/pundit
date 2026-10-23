@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "methodId": "outcome-anchored-shrunk-goals-v2",
+  "competitionId": "eng.1",
+  "fit": {
+    "methodId": "shrunk-event-rate-elo-allocation-v1",
+    "origin": "2026-10-22T00:00:00.000Z",
+    "options": {
+      "decayDays": 180,
+      "teamPrecision": 100
+    },
+    "intercept": 1.03984374499608,
+    "teamEffects": {
+      "Arsenal": -0.04292646753828869,
+      "Aston Villa": 0.000022980035314875014,
+      "Bournemouth": 0.009722318219752007,
+      "Brentford": 0.010441868874496248,
+      "Brighton": 0.03176337057533715,
+      "Burnley": 0.011862279396485336,
+      "Cardiff": -0.0000011433533632939628,
+      "Chelsea": 0.06015028403709871,
+      "Coventry": 0.005471397778896094,
+      "Crystal Palace": 0.010107773047347604,
+      "Everton": -0.0537003882836866,
+      "Forest": -0.0427094837720762,
+      "Fulham": -0.044972886011215234,
+      "Huddersfield": -0.0000011842331010591563,
+      "Hull": -0.034721473867204734,
+      "Ipswich": 0.05135637120400205,
+      "Leeds": -0.03791192806492351,
+      "Leicester": 0.0013341543779441627,
+      "Liverpool": 0.018484901804581438,
+      "Luton": 0.007096696096648314,
+      "Man City": 0.04636970773796561,
+      "Man United": 0.018641099993653074,
+      "Newcastle": 0.037869704651106804,
+      "Norwich": 0.000006178986431359728,
+      "Sheffield United": 0.0069812873287967035,
+      "Southampton": 0.0029654765914798762,
+      "Sunderland": -0.030948285347088798,
+      "Tottenham": -0.010890648848558311,
+      "Watford": 0.000027201062737905477,
+      "West Brom": 0.000013493741655893395,
+      "West Ham": 0.004458717596115874,
+      "Wolves": -0.027044979421181302
+    },
+    "allocationSlope": 0.5318941116418324,
+    "homeOffset": 0.23676488832805268,
+    "rho": -0.06,
+    "trainingCount": 3110,
+    "allocationTrainingCount": 1101,
+    "trainingThrough": "2026-10-19T19:00:00.000Z",
+    "trainingSha256": "b37d2b31152691b6b6d1bc1d57058d0caf939709aa8ebed0d19493f1cb5845d8",
+    "converged": true,
+    "gradientNorm": 2.7108862519263225e-9
+  },
+  "review": {
+    "experimentId": "outcome-anchored-goal-rates-v2",
+    "source": [
+      {
+        "path": "packages/api/src/services/historical-goal-calibration.ts",
+        "sha256": "00e429e3bea3082949587def37cfe6db86b35b452f9819810da47224a36f2c5b"
+      },
+      {
+        "path": "packages/api/src/services/dixon-coles.ts",
+        "sha256": "b9fc96af5954e917a101256fa6466567c258611504dd1f01860d1059cc48252d"
+      },
+      {
+        "path": "packages/api/src/services/outcome-anchored-score-grid.ts",
+        "sha256": "c397be1487fb70ff1a98a41598562cbf6e1792535014de13390719d434def07a"
+      },
+      {
+        "path": "packages/api/src/services/historical-goal-evaluation.ts",
+        "sha256": "914a55145957e1d25ec2d823df1f0836976db7ca728f54678049a7f2c4ba4dea"
+      },
+      {
+        "path": "packages/api/src/lib/team-names.ts",
+        "sha256": "0dbb76ea5c7fc6a37bbf5af7aa8ad8037f6741ed2bbd73a740cb7ac95c773776"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/prepare_inputs.py",
+        "sha256": "ef3d80127aa33373024d596fd706feff43c72f5bcadffda428e94bb36c00e896"
+      },
+      {
+        "path": "scripts/build-epl-goal-calibration-2026-10-22.ts",
+        "sha256": "5110dc22beff717bcec870325cca29963712993e693fe52e59298d7f8c6f4bbf"
+      }
+    ],
+    "training": [
+      {
+        "path": "model/epl-repin-2026-11-06/inputs/manifest.json",
+        "sha256": "3b4b143598bbb956b0069467fdf87e17a1f04ec73995a8a89db0e5a5519f28fe"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/inputs/matches.json",
+        "sha256": "6db7e5debc7d2a8a1ad8ebc69dc6f9a0d2340edf88bd6338693bd6500245b503"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/raw/E0-1819.csv",
+        "sha256": "7c096b3c2ecd54c6993d22eeea73450c2bde11e3457238b226b8f43c62dfc35e"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/raw/E0-1920.csv",
+        "sha256": "100037618b94f94057400bb02bf6bac4ef74ddaa58cde4b38370839c39caee61"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/raw/E0-2021.csv",
+        "sha256": "5afe63f69401457b8354eaacee24f9a3e520b3c3af6329564a9783e20d789c62"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/raw/E0-2122.csv",
+        "sha256": "335afcbabeb2939fa10ab39ba3e8215072d0b577cb8d0705c1e44c56e934e703"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/raw/E0-2223.csv",
+        "sha256": "8442792d3b614c94ea3cf381bd2736805889cc1713169035368fff19c3d02380"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/raw/E0-2324.csv",
+        "sha256": "b2e057b0ed959f198b0f63d2391c01239f3608e6de5db68edab3f88e04d07ff3"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/raw/E0-2425.csv",
+        "sha256": "d0c8ce4a96d886cf60cf101f570f4a3893844226f91c7bd769eb568c49edbfa4"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/raw/E0-2526.csv",
+        "sha256": "3e3a8352f9ada6789c508d6ca184424421fed56a30400904a4a327c583407e62"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/raw/E0-2627.csv",
+        "sha256": "705ef4373f6c4c9ec09b67eb3ca3398d6a770813095efc5d629edb591e4ee41c"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/raw/clubelo-eng.csv",
+        "sha256": "0d368daa3d5bfda2fd3e82f24ec8515b5acda9e9a06a50b44034fa28bdec7b5b"
+      }
+    ],
+    "evaluation": [
+      {
+        "path": "scripts/epl-repin-walkforward-2026-10-22.ts",
+        "sha256": "7c83f818aeab5e3734c3e577652214101007ea997c56d5b2f9804d4016f7aae9"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/decision.json",
+        "sha256": "2907f11129a52ee3c9842887332e99fbe5752a47c7f433df300f6022bff37633"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/experiment-log.json",
+        "sha256": "8e6ada806706fba546391d6dea28cbaeb51d799c6cbc625008e7bf8e90e75d5d"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/report.json",
+        "sha256": "08efca9e430fcb3526cf1ad0c2d14b61f667f375db4fa7699fe5b8dd5c48082a"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/reliability.json",
+        "sha256": "c588322cdcc73dbee4802002e93d5bcd531f9011c4628059b596c388f43cc232"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/recommended-fit.json",
+        "sha256": "fe089cda549d7d343aef11ece4665df0abc27b91825dcad2253413b2252d01ff"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/review/temperature-walk-forward.json",
+        "sha256": "a268789b85016d4b8644e24d8cd218c1b2c2cf18fa1f7b30c756e1b718e24d77"
+      },
+      {
+        "path": "model/epl-repin-2026-11-06/review/market-close.txt",
+        "sha256": "25e8c40853acb30ae40fffd57821c0a6edafc15615cbd0232c921d1f5d6bc415"
+      }
+    ]
+  }
+}
