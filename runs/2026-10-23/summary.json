@@ -1,0 +1,91 @@
+{
+  "date": "2026-10-23",
+  "runId": "2026-10-23T13-38-26-118Z",
+  "status": "attention",
+  "overall": "ISSUES FOUND",
+  "progress": "complete",
+  "liveBettingMaths": {
+    "pass": 20,
+    "inconclusive": 0,
+    "fail": 0,
+    "total": 20
+  },
+  "liveBettingMathsHeadline": "Live betting-maths (excl. offline helpers): pass 20, inconclusive 0, fail 0 (20 scenarios)",
+  "byCategory": {
+    "betting-maths": {
+      "pass": 28,
+      "inconclusive": 0,
+      "fail": 0
+    },
+    "context": {
+      "pass": 24,
+      "inconclusive": 0,
+      "fail": 2
+    },
+    "infra": {
+      "pass": 18,
+      "inconclusive": 5,
+      "fail": 0
+    }
+  },
+  "scenariosRun": 77,
+  "passed": 70,
+  "inconclusive": 5,
+  "failed": 2,
+  "turns": 75,
+  "answeredTurns": 75,
+  "turnsWithCitations": 4,
+  "medianLatencyMs": 334,
+  "repeatedSentences": 0,
+  "nearDuplicatePairs": 1,
+  "uncitedCurrentNews": 0,
+  "requestEngine": "both",
+  "qualityMetrics": {
+    "templateShare": 0.10666666666666667,
+    "nearDuplicateRate": 0.02846846846846847,
+    "llmCallRate": 0.09333333333333334,
+    "abstainRate": 0.12,
+    "citationCoverage": 0.05333333333333334
+  },
+  "llmJudgeSummary": {
+    "score": null,
+    "status": "skipped_unavailable",
+    "note": "judge: skipped (unavailable)",
+    "judgedTurns": 0,
+    "scoredTurns": 0,
+    "skippedTurns": 24
+  },
+  "engineQualityComparison": {
+    "legacy": {
+      "templateShare": 0.10666666666666667,
+      "nearDuplicateRate": 0.02846846846846847,
+      "llmCallRate": 0.09333333333333334,
+      "abstainRate": 0.12,
+      "citationCoverage": 0.05333333333333334
+    },
+    "agent": {
+      "templateShare": 0.12,
+      "nearDuplicateRate": 0.026306306306306305,
+      "llmCallRate": 0.9866666666666667,
+      "abstainRate": 0.05333333333333334,
+      "citationCoverage": 0.05333333333333334
+    }
+  },
+  "findings": [
+    {
+      "scenario": "pinned-current-manager-and-result-evidence",
+      "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
+    },
+    {
+      "scenario": "pinned-current-manager-everton-fixed",
+      "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
+    },
+    {
+      "scenario": "near-duplicate",
+      "summary": "74% overlap between answers to \"What are the latest dated club injury updates for Ipswich and Forest? Keep current reports distinct from future kickoff availability.\" and \"Any injury or lineup news for Ipswich vs Forest?\""
+    }
+  ],
+  "sourceCommit": "7eeee30",
+  "apiSha": "7eeee30",
+  "ranAt": "2026-10-23T13:38:26.118Z"
+}
