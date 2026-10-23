@@ -313,6 +313,19 @@ function fattestCapturedEv(grounding: Grounding): {
 
 const TYPED_DECIMAL_PRICE = /\b(?:odds|price|line|at|@)\s*(?:of\s*)?(\d{1,2}\.\d{1,2})\b/i;
 
+const TYPED_PRICE_VALUE_CUE = /\b(?:value|worth|good bet|bet)\b/i;
+
+/**
+ * A value question that quotes a price in its text, with no structured line, got
+ * the generic "No price yet." and silently dropped the quoted price. Say that the
+ * line is only read from the line field, as the pricing desk does.
+ */
+function typedPriceValueNotice(question: string, grounding: Grounding, answer: string): string | null {
+  if (grounding.pricing.userLine || !answer.includes("No price yet.")) return null;
+  if (!TYPED_DECIMAL_PRICE.test(question) || !TYPED_PRICE_VALUE_CUE.test(question)) return null;
+  return "I only price a line you enter in the line field, not one typed into the question, so add it there and I will print EV% and pass or play.";
+}
+
 function composePricingDeskAnswer(grounding: Grounding, question = ""): string {
   const model = grounding.pricing.model;
   const oneXTwo = `My 1X2 is ${grounding.home} ${pct(model.home.p)} (fair ${model.home.fairOdds.toFixed(2)}), `
@@ -741,6 +754,8 @@ export function composeMatchResponse(
     const prefetched = consumePrefetchedTakeDelivery();
     const take = prefetched ?? composePunditTakeDelivery(question, grounding, plan);
     if (take) {
+      const typedPriceNotice = typedPriceValueNotice(question, grounding, take.answer);
+      if (typedPriceNotice) take.answer = take.answer.replace("No price yet.", typedPriceNotice);
       stashPunditTakeDelivery(take);
       return take.answer;
     }
