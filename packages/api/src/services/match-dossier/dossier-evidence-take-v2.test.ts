@@ -4,6 +4,10 @@ import { runDossierEvidenceCapture } from "./dossier-evidence-capture";
 import { DOSSIER_SYNTHETIC_AWAY, DOSSIER_SYNTHETIC_HOME } from "./dossier-synthetic-fixture";
 import { isTakeV2DossierEvidence, type DossierEvidenceItem } from "./types";
 
+const asOf = new Date("2026-10-19T12:00:00.000Z");
+/** Hermetic page retrieval: a fixed public address (no DNS) and a fixed clock, so these tests never depend on the network or the wall-clock date. */
+const publicResolver = async () => [{ address: "93.184.216.34", family: 4 }];
+
 describe("take v2 dossier evidence contract (#341)", () => {
   it("promoted page-verified items set fixtureMatchVerified and freshnessVerified true", async () => {
     const row = fixture(DOSSIER_SYNTHETIC_HOME, DOSSIER_SYNTHETIC_AWAY, { fixtureId: 909990010 });
@@ -16,7 +20,7 @@ describe("take v2 dossier evidence contract (#341)", () => {
     const { verifiedItems } = await runDossierEvidenceCapture(row, {
       fixtureId: "espn:eng.1:909990010",
       persistCapture: false,
-      now: new Date("2026-10-19T12:00:00.000Z"),
+      now: asOf,
       queries: ["North Testborough FC injury suspension update 2026-10-19"],
       searchOutcomes: [{
         status: "ok",
@@ -31,7 +35,7 @@ describe("take v2 dossier evidence contract (#341)", () => {
           date: "2026-10-19",
         }],
       }],
-      pageRetrieval: { fetch: mockFetch },
+      pageRetrieval: { fetch: mockFetch, resolveHost: publicResolver, now: () => asOf },
     });
 
     expect(verifiedItems).toHaveLength(1);
@@ -55,7 +59,7 @@ describe("take v2 dossier evidence contract (#341)", () => {
     const { verifiedItems, dropped } = await runDossierEvidenceCapture(row, {
       fixtureId: "espn:eng.1:909990011",
       persistCapture: false,
-      now: new Date("2026-10-19T12:00:00.000Z"),
+      now: asOf,
       queries: ["North Testborough FC injury suspension update 2026-10-19"],
       searchOutcomes: [{
         status: "ok",
@@ -70,7 +74,7 @@ describe("take v2 dossier evidence contract (#341)", () => {
           date: "2026-05-10",
         }],
       }],
-      pageRetrieval: { fetch: mockFetch },
+      pageRetrieval: { fetch: mockFetch, resolveHost: publicResolver, now: () => asOf },
     });
 
     expect(verifiedItems).toHaveLength(0);

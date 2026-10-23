@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { freezeWallClock, restoreWallClock } from "../__fixtures__/frozen-clock";
 import { fixture } from "../__fixtures__/model-fixture";
 import { buildMatchPricing } from "../response-correctness";
 import { sampleMatchContextFields } from "../match-context";
@@ -88,6 +89,7 @@ describe("dossier team-news guards", () => {
   const savedEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
 
   beforeEach(() => {
+    freezeWallClock();
     for (const key of ENV_KEYS) savedEnv[key] = process.env[key];
     process.env.MATCH_DOSSIER_ENABLED = "true";
     process.env.MATCH_DOSSIER_FIXTURE_FIRST_ENABLED = "true";
@@ -97,6 +99,7 @@ describe("dossier team-news guards", () => {
   });
 
   afterEach(() => {
+    restoreWallClock();
     for (const key of ENV_KEYS) {
       if (savedEnv[key] === undefined) delete process.env[key];
       else process.env[key] = savedEnv[key];

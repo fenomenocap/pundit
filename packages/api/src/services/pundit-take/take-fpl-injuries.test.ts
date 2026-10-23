@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { freezeWallClock, restoreWallClock } from "../__fixtures__/frozen-clock";
 import type { DossierEvidenceItem, MatchDossier } from "../match-dossier/types";
 import { buildMatchPricing } from "../response-correctness";
 import { sampleMatchContextFields } from "../match-context";
@@ -145,9 +146,12 @@ function dossierWithInjuries(items: DossierEvidenceItem[]): MatchDossier {
 
 describe("FPL internal-only dossier injuries in take v2", () => {
   beforeEach(() => {
-    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-18T12:00:00.000Z"));
+    freezeWallClock("2026-10-18T12:00:00.000Z");
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    restoreWallClock();
+    vi.restoreAllMocks();
+  });
 
   const question = "Who wins Tottenham v Coventry?";
   const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: false });

@@ -119,6 +119,48 @@ export function loadApiRuntimeRoutingHelpers(repoRoot = path.resolve(import.meta
   }
 }
 
+let apiClubNameHelpers;
+
+// The API keys clubs by short canonical names ("Man City") and prints the full
+// display form in chat ("Manchester City"). Both come from the API's own
+// tables, so the harness reads them instead of keeping a third copy.
+export function loadApiClubNameHelpers(repoRoot = path.resolve(import.meta.dirname, "..")) {
+  if (apiClubNameHelpers) return apiClubNameHelpers;
+  const previousProject = process.env.TS_NODE_PROJECT;
+  try {
+    process.env.TS_NODE_PROJECT = path.join(repoRoot, "packages/api/tsconfig.json");
+    require(path.join(repoRoot, "packages/api/node_modules/ts-node/register/transpile-only"));
+    const names = require(path.join(repoRoot, "packages/api/src/lib/team-names.ts"));
+    const display = require(path.join(repoRoot, "packages/api/src/lib/display-club-names.ts"));
+    apiClubNameHelpers = { ...names, ...display };
+    return apiClubNameHelpers;
+  } catch (error) {
+    throw new Error("club-name scenarios require installed API development dependencies", { cause: error });
+  } finally {
+    if (previousProject === undefined) delete process.env.TS_NODE_PROJECT;
+    else process.env.TS_NODE_PROJECT = previousProject;
+  }
+}
+
+/** Every label the API uses for one club: short canonical, aliases and the formal display name. */
+export function clubNameVariants(label, helpers = loadApiClubNameHelpers()) {
+  const given = String(label ?? "").trim();
+  if (!given) return [];
+  const canonical = helpers.canonicalClubName(given);
+  const variants = new Set([given, canonical, helpers.formalClubNamesInText(given), helpers.formalClubNamesInText(canonical)]);
+  for (const [alias, aliasCanonical] of helpers.getTeamNameAliases()) {
+    if (aliasCanonical === canonical) variants.add(alias);
+  }
+  // Longest first so the alternation prefers "Manchester City" over a shorter overlap.
+  return [...variants].filter(Boolean).sort((a, b) => b.length - a.length);
+}
+
+/** Regex source matching any API label for the club, bounded like the old single-name pattern. */
+export function clubNamePattern(label, helpers) {
+  const alternatives = clubNameVariants(label, helpers).map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return alternatives.length ? `(?:${alternatives.join("|")})` : "(?!)";
+}
+
 // Schema 17 adds required cross-surface, responsive and multi-turn browser
 // evidence. Pacing and exact-SHA gates are unchanged from Schema 17.
 export const EVAL_SCHEMA_VERSION = 17;
@@ -929,9 +971,9 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
       ? (grounding.seasonOutlook?.titleProbabilities ?? []).slice(0, 2)
       : [];
     assertions.seasonRankingAnswered = leaders.length >= 2 && leaders.every(({ team, probability }) => {
-      const escaped = team.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const named = clubNamePattern(team);
       const expected = probability * 100;
-      return [...text.matchAll(new RegExp(`\\b${escaped}\\b[^.!?\\n]{0,80}?(\\d+(?:\\.\\d+)?)\\s*%`, "gi"))]
+      return [...text.matchAll(new RegExp(`\\b${named}\\b[^.!?\\n]{0,80}?(\\d+(?:\\.\\d+)?)\\s*%`, "gi"))]
         .some((match) => Math.abs(Number(match[1]) - expected) <= statedPercentageTolerance(match[1]));
     });
   }
@@ -961,7 +1003,7 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
       ? [...standings].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0]?.team ?? null
       : null;
     const rankedFromTable = Boolean(tableLeader)
-      && new RegExp(`\\b${String(tableLeader).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text);
+      && new RegExp(`\\b${clubNamePattern(tableLeader)}\\b`, "i").test(text);
     assertions.tableSourceFidelity = standings.length > 1
       && seasonRows.length > 1
       && !emitsSeasonProbability
