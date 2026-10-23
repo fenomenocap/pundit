@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from "vitest";
+import { freezeWallClock, restoreWallClock } from "../__fixtures__/frozen-clock";
 import { fixture } from "../__fixtures__/model-fixture";
 import {
   buildFplInjuryEvidenceForFixture,
@@ -30,12 +31,14 @@ describe("FPL bootstrap-static injuries (interim)", () => {
   const saved: Record<string, string | undefined> = {};
 
   beforeEach(() => {
+    freezeWallClock();
     for (const key of ENV_KEYS) saved[key] = process.env[key];
     resetFplBootstrapCacheForTests();
     process.env.MATCH_DOSSIER_FPL_ENABLED = "true";
   });
 
   afterEach(() => {
+    restoreWallClock();
     vi.restoreAllMocks();
     resetFplBootstrapCacheForTests();
     for (const key of ENV_KEYS) {

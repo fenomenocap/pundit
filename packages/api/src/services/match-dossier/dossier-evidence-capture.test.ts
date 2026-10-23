@@ -4,6 +4,10 @@ import { fixture } from "../__fixtures__/model-fixture";
 import { DOSSIER_SYNTHETIC_AWAY, DOSSIER_SYNTHETIC_HOME } from "./dossier-synthetic-fixture";
 import { runDossierEvidenceCapture } from "./dossier-evidence-capture";
 
+const asOf = new Date("2026-10-19T12:00:00.000Z");
+/** Hermetic page retrieval: a fixed public address (no DNS) and a fixed clock, so these tests never depend on the network or the wall-clock date. */
+const publicResolver = async () => [{ address: "93.184.216.34", family: 4 }];
+
 describe("dossier evidence capture (synthetic, no network)", () => {
   it("verifies claims against mocked page bodies on example.test", async () => {
     const row = fixture(DOSSIER_SYNTHETIC_HOME, DOSSIER_SYNTHETIC_AWAY, {
@@ -18,6 +22,7 @@ describe("dossier evidence capture (synthetic, no network)", () => {
     const { capture, verifiedItems } = await runDossierEvidenceCapture(row, {
       fixtureId: "espn:eng.1:909990002",
       persistCapture: false,
+      now: asOf,
       queries: ["North Testborough FC injury suspension update 2026-10-19"],
       searchOutcomes: [{
         status: "ok",
@@ -32,7 +37,7 @@ describe("dossier evidence capture (synthetic, no network)", () => {
           date: "2026-10-19",
         }],
       }],
-      pageRetrieval: { fetch: mockFetch },
+      pageRetrieval: { fetch: mockFetch, resolveHost: publicResolver, now: () => asOf },
     });
 
     expect(capture.summary.verified).toBe(1);
@@ -49,6 +54,7 @@ describe("dossier evidence capture (synthetic, no network)", () => {
     const { capture } = await runDossierEvidenceCapture(row, {
       fixtureId: "espn:eng.1:909990003",
       persistCapture: false,
+      now: asOf,
       queries: ["q"],
       searchOutcomes: [{
         status: "ok",
@@ -63,7 +69,7 @@ describe("dossier evidence capture (synthetic, no network)", () => {
           date: "2026-10-19",
         }],
       }],
-      pageRetrieval: { fetch: mockFetch },
+      pageRetrieval: { fetch: mockFetch, resolveHost: publicResolver, now: () => asOf },
     });
 
     expect(capture.summary.verified).toBe(0);
@@ -87,7 +93,7 @@ describe("dossier evidence capture (synthetic, no network)", () => {
     const { verifiedItems, dropped } = await runDossierEvidenceCapture(row, {
       fixtureId: "espn:eng.1:909990004",
       persistCapture: false,
-      now: new Date("2026-10-19T12:00:00.000Z"),
+      now: asOf,
       queries: ["North Testborough FC injury suspension update 2026-10-19"],
       searchOutcomes: [{
         status: "ok",
@@ -102,7 +108,7 @@ describe("dossier evidence capture (synthetic, no network)", () => {
           date: "",
         }],
       }],
-      pageRetrieval: { fetch: mockFetch },
+      pageRetrieval: { fetch: mockFetch, resolveHost: publicResolver, now: () => asOf },
     });
 
     expect(dropped.filter((d) => d.reason === "missing_published_at")).toHaveLength(0);

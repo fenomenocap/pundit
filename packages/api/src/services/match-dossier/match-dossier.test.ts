@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { freezeWallClock, restoreWallClock } from "../__fixtures__/frozen-clock";
 import { fixture } from "../__fixtures__/model-fixture";
 import {
   replaceFootballDataForTests,
@@ -35,11 +36,13 @@ describe("match dossier", () => {
   let dataDir: string;
 
   beforeEach(() => {
+    freezeWallClock();
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-dossier-"));
     process.env = { ...prevEnv, PUNDIT_DATA_DIR: dataDir, MATCH_DOSSIER_ENABLED: "true" };
   });
 
   afterEach(() => {
+    restoreWallClock();
     process.env = prevEnv;
     fs.rmSync(dataDir, { recursive: true, force: true });
     replaceModelDataForTests({ fixtures: [], lastUpdated: null, error: null });

@@ -12,6 +12,8 @@ import {
 } from "./dossier-evidence-gate";
 
 const asOf = new Date("2026-10-19T12:00:00.000Z");
+/** Hermetic page retrieval: a fixed public address (no DNS) and a fixed clock, so these tests never depend on the network or the wall-clock date. */
+const publicResolver = async () => [{ address: "93.184.216.34", family: 4 }];
 
 describe("dossier evidence spot-check regressions (pass 2)", () => {
   it("(1) BBC: claim is body sentence only, not title — nav chrome", async () => {
@@ -53,7 +55,7 @@ describe("dossier evidence spot-check regressions (pass 2)", () => {
           date: "2026-10-18",
         }],
       }],
-      pageRetrieval: { fetch: mockFetch },
+      pageRetrieval: { fetch: mockFetch, resolveHost: publicResolver, now: () => asOf },
     });
     expect(verifiedItems[0]?.claim).toMatch(/Isak.*doubtful/i);
     expect(verifiedItems[0]?.claim).not.toMatch(/Skip to content/i);

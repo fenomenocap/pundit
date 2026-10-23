@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { freezeWallClock, restoreWallClock } from "../../__fixtures__/frozen-clock";
 import { fixture } from "../../__fixtures__/model-fixture";
 import type { FootballMatch } from "../../football-data";
 import { buildMatchDossierForFixture } from "../builder";
@@ -117,6 +118,7 @@ describe("fixture-first team news (source groups)", () => {
   const saved: Record<string, string | undefined> = {};
 
   beforeEach(() => {
+    freezeWallClock();
     for (const key of ENV_KEYS) saved[key] = process.env[key];
     resetFplBootstrapCacheForTests();
     resetPlFixturesCacheForTests();
@@ -126,6 +128,7 @@ describe("fixture-first team news (source groups)", () => {
   });
 
   afterEach(() => {
+    restoreWallClock();
     vi.restoreAllMocks();
     for (const key of ENV_KEYS) {
       if (saved[key] === undefined) delete process.env[key];
