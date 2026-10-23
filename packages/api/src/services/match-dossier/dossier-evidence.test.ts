@@ -1,5 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { freezeWallClock, restoreWallClock } from "../__fixtures__/frozen-clock";
 import { fixture } from "../__fixtures__/model-fixture";
 import { resetWebSearchReplayCacheForTests } from "../web-search-replay";
 import {
@@ -24,11 +25,13 @@ describe("dossier evidence (Phase 2)", () => {
   const prevReplayDir = process.env.CHAT_EVAL_SEARCH_REPLAY_DIR;
 
   beforeEach(() => {
+    freezeWallClock();
     process.env.CHAT_EVAL_SEARCH_REPLAY_DIR = REPLAY_DIR;
     resetWebSearchReplayCacheForTests();
   });
 
   afterEach(() => {
+    restoreWallClock();
     if (prevReplayDir === undefined) delete process.env.CHAT_EVAL_SEARCH_REPLAY_DIR;
     else process.env.CHAT_EVAL_SEARCH_REPLAY_DIR = prevReplayDir;
     resetWebSearchReplayCacheForTests();
