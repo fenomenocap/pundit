@@ -351,6 +351,7 @@ export function planResponse(
     mode = "team-news";
   } else if (/\b(?:table|standings?)\b/i.test(q)) mode = "table";
   else if (/\b(?:title race|top[- ]four|season outlook|champion)\b/i.test(q)) mode = "season";
+  else if (match && asksUnpricedMarket(q) && !asksTotalsQuestion(q) && !asksBttsQuestion(q)) mode = "match-follow-up";
   else if (match && asksTotalsQuestion(q)) mode = "totals";
   else if (match && asksBttsQuestion(q)) mode = "btts";
   else if (match && /\b(?:which|what)\b.{0,40}\b(?:input|factor|driver)\b.{0,30}\b(?:matters? most|most important|drives?|explains?)\b|\b(?:most important|main)\b.{0,20}\b(?:input|factor|driver)\b/i.test(q)) mode = "match-follow-up";
