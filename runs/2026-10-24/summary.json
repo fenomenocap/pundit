@@ -1,0 +1,91 @@
+{
+  "date": "2026-10-24",
+  "runId": "2026-10-24T12-48-26-964Z",
+  "status": "attention",
+  "overall": "ISSUES FOUND",
+  "progress": "complete",
+  "liveBettingMaths": {
+    "pass": 20,
+    "inconclusive": 0,
+    "fail": 0,
+    "total": 20
+  },
+  "liveBettingMathsHeadline": "Live betting-maths (excl. offline helpers): pass 20, inconclusive 0, fail 0 (20 scenarios)",
+  "byCategory": {
+    "betting-maths": {
+      "pass": 28,
+      "inconclusive": 0,
+      "fail": 0
+    },
+    "context": {
+      "pass": 23,
+      "inconclusive": 0,
+      "fail": 3
+    },
+    "infra": {
+      "pass": 19,
+      "inconclusive": 4,
+      "fail": 0
+    }
+  },
+  "scenariosRun": 77,
+  "passed": 70,
+  "inconclusive": 4,
+  "failed": 3,
+  "turns": 77,
+  "answeredTurns": 77,
+  "turnsWithCitations": 2,
+  "medianLatencyMs": 393,
+  "repeatedSentences": 0,
+  "nearDuplicatePairs": 0,
+  "uncitedCurrentNews": 0,
+  "requestEngine": "both",
+  "qualityMetrics": {
+    "templateShare": 0.1038961038961039,
+    "nearDuplicateRate": 0.028024606971975393,
+    "llmCallRate": 0.09090909090909091,
+    "abstainRate": 0.14285714285714285,
+    "citationCoverage": 0.025974025974025976
+  },
+  "llmJudgeSummary": {
+    "score": null,
+    "status": "skipped_unavailable",
+    "note": "judge: skipped (unavailable)",
+    "judgedTurns": 0,
+    "scoredTurns": 0,
+    "skippedTurns": 24
+  },
+  "engineQualityComparison": {
+    "legacy": {
+      "templateShare": 0.1038961038961039,
+      "nearDuplicateRate": 0.028024606971975393,
+      "llmCallRate": 0.09090909090909091,
+      "abstainRate": 0.14285714285714285,
+      "citationCoverage": 0.025974025974025976
+    },
+    "agent": {
+      "templateShare": 0.12987012987012986,
+      "nearDuplicateRate": 0.02631578947368421,
+      "llmCallRate": 0.987012987012987,
+      "abstainRate": 0.05194805194805195,
+      "citationCoverage": 0.06493506493506493
+    }
+  },
+  "findings": [
+    {
+      "scenario": "pinned-current-manager-and-result-evidence",
+      "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
+    },
+    {
+      "scenario": "pinned-current-manager-everton-fixed",
+      "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
+    },
+    {
+      "scenario": "dated-club-news-delivers-supported-update",
+      "summary": "FAIL: turn 1: verification failed verificationStatus; turn 1: verification failed positiveNewsVerification; turn 1: positive dated club news failed positiveNewsVerification; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated"
+    }
+  ],
+  "sourceCommit": "7eeee30",
+  "apiSha": "7eeee30",
+  "ranAt": "2026-10-24T12:48:26.964Z"
+}

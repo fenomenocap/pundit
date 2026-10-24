@@ -1,0 +1,38 @@
+[chat-eval-judge] remote OIDC bearer source: fresh_actions_mint
+{
+  "runId": "2026-10-24T12-48-26-964Z",
+  "overall": "ISSUES FOUND",
+  "requests": 80,
+  "featured": {
+    "homeTeam": "Arsenal",
+    "awayTeam": "Everton",
+    "competitionId": "eng.1",
+    "competition": "Premier League",
+    "utcDate": "2026-10-24T14:00Z",
+    "stage": "2026_27_english_premier_league",
+    "recognizedFixtureId": "espn:eng.1:401878768"
+  },
+  "report": {
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-24T12-48-26-964Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-24T12-48-26-964Z.md"
+  }
+}
+[chat-eval-judge] remote OIDC bearer source: fresh_actions_mint
+{
+  "runId": "2026-10-24T13-08-26-123Z",
+  "overall": "ISSUES FOUND",
+  "requests": 80,
+  "featured": {
+    "homeTeam": "Arsenal",
+    "awayTeam": "Everton",
+    "competitionId": "eng.1",
+    "competition": "Premier League",
+    "utcDate": "2026-10-24T14:00Z",
+    "stage": "2026_27_english_premier_league",
+    "recognizedFixtureId": "espn:eng.1:401878768"
+  },
+  "report": {
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-24T13-08-26-123Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-24T13-08-26-123Z.md"
+  }
+}

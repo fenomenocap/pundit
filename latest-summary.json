@@ -1,6 +1,6 @@
 {
-  "date": "2026-10-23",
-  "runId": "2026-10-23T13-38-26-118Z",
+  "date": "2026-10-24",
+  "runId": "2026-10-24T12-48-26-964Z",
   "status": "attention",
   "overall": "ISSUES FOUND",
   "progress": "complete",
@@ -18,34 +18,34 @@
       "fail": 0
     },
     "context": {
-      "pass": 24,
+      "pass": 23,
       "inconclusive": 0,
-      "fail": 2
+      "fail": 3
     },
     "infra": {
-      "pass": 18,
-      "inconclusive": 5,
+      "pass": 19,
+      "inconclusive": 4,
       "fail": 0
     }
   },
   "scenariosRun": 77,
   "passed": 70,
-  "inconclusive": 5,
-  "failed": 2,
-  "turns": 75,
-  "answeredTurns": 75,
-  "turnsWithCitations": 4,
-  "medianLatencyMs": 334,
+  "inconclusive": 4,
+  "failed": 3,
+  "turns": 77,
+  "answeredTurns": 77,
+  "turnsWithCitations": 2,
+  "medianLatencyMs": 393,
   "repeatedSentences": 0,
-  "nearDuplicatePairs": 1,
+  "nearDuplicatePairs": 0,
   "uncitedCurrentNews": 0,
   "requestEngine": "both",
   "qualityMetrics": {
-    "templateShare": 0.10666666666666667,
-    "nearDuplicateRate": 0.02846846846846847,
-    "llmCallRate": 0.09333333333333334,
-    "abstainRate": 0.12,
-    "citationCoverage": 0.05333333333333334
+    "templateShare": 0.1038961038961039,
+    "nearDuplicateRate": 0.028024606971975393,
+    "llmCallRate": 0.09090909090909091,
+    "abstainRate": 0.14285714285714285,
+    "citationCoverage": 0.025974025974025976
   },
   "llmJudgeSummary": {
     "score": null,
@@ -57,18 +57,18 @@
   },
   "engineQualityComparison": {
     "legacy": {
-      "templateShare": 0.10666666666666667,
-      "nearDuplicateRate": 0.02846846846846847,
-      "llmCallRate": 0.09333333333333334,
-      "abstainRate": 0.12,
-      "citationCoverage": 0.05333333333333334
+      "templateShare": 0.1038961038961039,
+      "nearDuplicateRate": 0.028024606971975393,
+      "llmCallRate": 0.09090909090909091,
+      "abstainRate": 0.14285714285714285,
+      "citationCoverage": 0.025974025974025976
     },
     "agent": {
-      "templateShare": 0.12,
-      "nearDuplicateRate": 0.026306306306306305,
-      "llmCallRate": 0.9866666666666667,
-      "abstainRate": 0.05333333333333334,
-      "citationCoverage": 0.05333333333333334
+      "templateShare": 0.12987012987012986,
+      "nearDuplicateRate": 0.02631578947368421,
+      "llmCallRate": 0.987012987012987,
+      "abstainRate": 0.05194805194805195,
+      "citationCoverage": 0.06493506493506493
     }
   },
   "findings": [
@@ -81,11 +81,11 @@
       "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
     },
     {
-      "scenario": "near-duplicate",
-      "summary": "74% overlap between answers to \"What are the latest dated club injury updates for Ipswich and Forest? Keep current reports distinct from future kickoff availability.\" and \"Any injury or lineup news for Ipswich vs Forest?\""
+      "scenario": "dated-club-news-delivers-supported-update",
+      "summary": "FAIL: turn 1: verification failed verificationStatus; turn 1: verification failed positiveNewsVerification; turn 1: positive dated club news failed positiveNewsVerification; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated"
     }
   ],
   "sourceCommit": "7eeee30",
   "apiSha": "7eeee30",
-  "ranAt": "2026-10-23T13:38:26.118Z"
+  "ranAt": "2026-10-24T12:48:26.964Z"
 }
