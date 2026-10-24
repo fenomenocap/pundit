@@ -3228,6 +3228,13 @@ describe("current-news evidence hardening", () => {
       expect(answer).toContain("8. **Hull**");
       expect(answer).toContain("4. **Brentford**");
       expect(answer).not.toContain("**Man City**");
+      const three = deterministicGroundedResponse("premier league table bottom three", table) as string;
+      expect(three).toContain("The current bottom three are:");
+      expect(three).toContain("7. **Everton**");
+      expect(three).not.toContain("5. **Brentford**");
+      const top = deterministicGroundedResponse("show the top 3 of the table", table) as string;
+      expect(top).toContain("The current top three are:");
+      expect(top).not.toContain("4. **Brentford**");
     });
 
     it("abstains directly when the table cannot establish the clearest title path", () => {
@@ -4640,6 +4647,21 @@ describe("resolveAskContext", () => {
     expect(resolveQuestionTeams("Explain what xG is", fixtures)).toBeUndefined();
     // Exact names still win and are unaffected.
     expect(resolveQuestionTeams("Chelsea vs Tottenham", fixtures)).toEqual(["Chelsea", "Tottenham"]);
+  });
+
+  it("resolves a bare trailing club word only when it names one opponent", () => {
+    const fixtures = [
+      fixture("Aston Villa", "Man City"),
+      fixture("Hull", "Leeds", { fixtureId: 2 }),
+      fixture("Aston Villa", "Hull", { fixtureId: 3 }),
+      fixture("Arsenal", "Man United", { fixtureId: 4 }),
+    ];
+    expect(resolveQuestionTeams("Who wins Villa v City, and what are fair odds?", fixtures))
+      .toEqual(["Aston Villa", "Man City"]);
+    expect(resolveQuestionTeams("Arsenal v United prediction", fixtures)).toEqual(["Arsenal", "Man United"]);
+    // "City" with no named club, or that fits no opponent of the named club, stays unresolved.
+    expect(resolveQuestionTeams("City prediction", fixtures)).toBeUndefined();
+    expect(resolveQuestionTeams("Arsenal v City", fixtures)).toBeUndefined();
   });
 
   it("answers World Cup 2026 questions with the retired pipeline, not a preview", () => {

@@ -5108,6 +5108,25 @@ function listMatchups(fixtures: TeamFixture[]): string {
   return `${names.slice(0, -1).join(", ")}, or ${names[names.length - 1]}`;
 }
 
+/**
+ * "Villa v City": a bare trailing word of a club name ("city", "united") names
+ * the opponent only when exactly one of the named team's real opponents ends in
+ * it. "City" alone stays unresolved when it could be Hull or Man City.
+ */
+function suffixOpponent(question: string, named: string, fixtures: TeamFixture[]): string | undefined {
+  const words = new Set(normalizeTeamText(question).match(/[\p{L}\p{N}'’]+/gu) ?? []);
+  const own = normalizeTeamText(named).split(/\s+/);
+  const matches = new Set<string>();
+  for (const fixture of fixtures) {
+    const opponent = fixture.home === named ? fixture.away : fixture.away === named ? fixture.home : undefined;
+    if (!opponent) continue;
+    const parts = normalizeTeamText(opponent).split(/\s+/);
+    const last = parts[parts.length - 1];
+    if (parts.length > 1 && last.length >= 4 && !own.includes(last) && words.has(last)) matches.add(opponent);
+  }
+  return matches.size === 1 ? [...matches][0] : undefined;
+}
+
 export function resolveTeams(question: string, fixtures: TeamFixture[]): [string, string] {
   const orderedTeams = [...mentionedTeamPositions(question, fixtures).entries()]
     .sort(([, positionA], [, positionB]) => positionA - positionB)
@@ -5139,6 +5158,11 @@ export function resolveTeams(question: string, fixtures: TeamFixture[]): [string
     // a near-miss that names a third club or no fixture is ignored.
     const merged = new Map(typoTeamPositions(question, fixtures));
     for (const [team, position] of mentionedTeamPositions(question, fixtures)) merged.set(team, position);
+    if (merged.size === 1) {
+      const [[named, position]] = [...merged.entries()];
+      const opponent = suffixOpponent(question, named, fixtures);
+      if (opponent) merged.set(opponent, position + 1);
+    }
     const typoTeams = [...merged.entries()].sort(([, a], [, b]) => a - b).map(([team]) => team);
     if (typoTeams.length === 2 && findFixture(typoTeams[0], typoTeams[1], fixtures)) {
       return [typoTeams[0], typoTeams[1]];
@@ -9523,7 +9547,8 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
   }
   const played = Math.max(...rows.map((row) => row.playedGames), 0);
   const playedCounts = [...new Set(rows.map((row) => row.playedGames))].sort((a, b) => a - b);
-  const tableRows = rows.slice(0, 5).map((row) =>
+  const listSize = requestedTableSize(question, rows.length);
+  const tableRows = rows.slice(0, listSize).map((row) =>
     `${row.position}. **${row.team}** — ${row.points} points from ${row.playedGames} `
     + `${row.playedGames === 1 ? "match" : "matches"}, goal difference `
     + `${row.goalDifference >= 0 ? "+" : ""}${row.goalDifference}.`
@@ -9585,14 +9610,14 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
   // "Who's bottom?" was answered with the top five.
   if (/\b(?:bottom|foot of the (?:table|league)|propping up)\b/i.test(question)) {
     const last = rows.at(-1)!;
-    const bottomRows = rows.slice(-5).map((row) =>
+    const bottomRows = rows.slice(-listSize).map((row) =>
       `${row.position}. **${row.team}** — ${row.points} points from ${row.playedGames} `
       + `${row.playedGames === 1 ? "match" : "matches"}, goal difference `
       + `${row.goalDifference >= 0 ? "+" : ""}${row.goalDifference}.`
     );
     return [
       `${last.team} are bottom with ${last.points} points from ${last.playedGames} `
-        + `${last.playedGames === 1 ? "match" : "matches"}. The current bottom five are:`,
+        + `${last.playedGames === 1 ? "match" : "matches"}. The current bottom ${listWord(listSize)} are:`,
       // A list that starts at 16 cannot interrupt a paragraph in markdown.
       "",
       ...bottomRows,
@@ -9604,11 +9629,27 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
   const leader = rows[0];
   return [
     `${leader.team} lead with ${leader.points} points from ${leader.playedGames} `
-      + `${leader.playedGames === 1 ? "match" : "matches"}. The current top five are:`,
+      + `${leader.playedGames === 1 ? "match" : "matches"}. The current top ${listWord(listSize)} are:`,
     ...tableRows,
     "",
     "That is the table as it stands; it does not imply a title probability.",
   ].join("\n");
+}
+
+const TABLE_SIZE_WORDS: Record<string, number> = {
+  two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, ten: 10, twelve: 12,
+};
+
+/** "bottom three", "top 4": the size the user asked for, otherwise five. */
+function requestedTableSize(question: string, available: number): number {
+  const match = /\b(?:top|bottom|first|last)\s+(\d{1,2}|[a-z]+)\b/i.exec(question);
+  const raw = match?.[1].toLowerCase();
+  const asked = raw === undefined ? undefined : /^\d+$/.test(raw) ? Number(raw) : TABLE_SIZE_WORDS[raw];
+  return asked && asked >= 2 && asked <= available ? asked : Math.min(5, available);
+}
+
+function listWord(size: number): string {
+  return Object.entries(TABLE_SIZE_WORDS).find(([, value]) => value === size)?.[0] ?? String(size);
 }
 
 export function deterministicGroundedResponse(
